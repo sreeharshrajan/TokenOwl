@@ -198,7 +198,11 @@ struct CodexFakeServer {
     }
 
     func write(to path: String) throws {
-        try script.write(toFile: path, atomically: true, encoding: .utf8)
+        let accountAwareScript = script.replacingOccurrences(
+            of: "if echo \"$line\" | grep -q '\"method\":\"initialize\"'; then",
+            with: "if echo \"$line\" | grep -q '\"method\":\"account/read\"'; then\n    echo '{\"id\":\"account\",\"result\":{\"account\":{\"type\":\"chatgpt\",\"email\":\"fixture@example.com\"}}}'\n  elif echo \"$line\" | grep -q '\"method\":\"initialize\"'; then"
+        )
+        try accountAwareScript.write(toFile: path, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: path)
     }
 }

@@ -83,8 +83,9 @@ public struct AntigravityQuotaClient: AntigravityQuotaFetching {
         configuration.timeoutIntervalForResource = 20
 
         let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
 
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await HTTPRetry.data(for: request, session: session)
 
         guard let http = response as? HTTPURLResponse else {
             throw QuotaClientError.invalidResponse
@@ -197,6 +198,7 @@ public struct AntigravityQuotaClient: AntigravityQuotaFetching {
         configuration.timeoutIntervalForResource = 20
 
         let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
 
         let (data, response) = try await session.data(for: request)
 
@@ -270,7 +272,11 @@ public struct AntigravityQuotaClient: AntigravityQuotaFetching {
     public func fetchAccount(
         accessToken: String
     ) async throws -> AntigravityAccount {
-        let session = URLSession(configuration: .ephemeral)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 15
+        configuration.timeoutIntervalForResource = 20
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
 
         // The email is the load-bearing identity field: if it cannot be
         // fetched the whole call throws, so the service can surface an
@@ -314,7 +320,7 @@ public struct AntigravityQuotaClient: AntigravityQuotaFetching {
         request.setValue("antigravity/1.11.3 macOS/arm64", forHTTPHeaderField: "User-Agent")
         request.httpBody = Data("{}".utf8)
 
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await HTTPRetry.data(for: request, session: session)
 
         guard let http = response as? HTTPURLResponse else {
             throw QuotaClientError.invalidResponse
@@ -356,7 +362,7 @@ public struct AntigravityQuotaClient: AntigravityQuotaFetching {
         var request = URLRequest(url: url)
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
 
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await HTTPRetry.data(for: request, session: session)
 
         guard let http = response as? HTTPURLResponse else {
             throw QuotaClientError.invalidResponse

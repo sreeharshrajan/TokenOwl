@@ -164,9 +164,14 @@ Licensed under the [MIT License](LICENSE).
 
 ### Google OAuth configuration
 
-Google token refresh requires `GOOGLE_OAUTH_CLIENT_ID` and
-`GOOGLE_OAUTH_CLIENT_SECRET` in the TokenOwl process environment. Use OAuth
-client credentials compatible with the existing Antigravity refresh token.
-No client credentials are bundled in the source. Launching from Finder does
-not inherit variables exported in your terminal; launch from the configured
-terminal or configure the app launcher environment. Keep credentials out of Git.
+Google token refresh reads the matching OAuth client configuration from the
+installed Antigravity IDE. No client credentials are bundled in the source.
+Paired `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` environment
+variables can override discovery. Finder launches do not inherit terminal
+environment variables. Keep credentials out of Git.
+
+### Version 0.2.0
+
+Adds OAuth configuration discovery, bounded HTTP retries, safer credential
+file checks, and improved Codex process handling and account identification.
+Notification and preferences enhancements are deferred.

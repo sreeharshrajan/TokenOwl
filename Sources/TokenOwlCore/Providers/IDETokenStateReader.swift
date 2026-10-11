@@ -293,7 +293,7 @@ public struct IDETokenStateReader: IDETokenStateReading {
 
     // MARK: Paths
 
-    private func resolveDatabasePath() throws -> String {
+    func resolveDatabasePath() throws -> String {
         if let override = databasePathOverride {
             return override
         }

@@ -130,7 +130,15 @@ struct IDETokenStateReaderTests {
         setenv("TOKENOWL_IDE_STATE_PATH", database.path, 1)
         defer { unsetenv("TOKENOWL_IDE_STATE_PATH") }
 
+        #if DEBUG
         #expect(try IDETokenStateReader().readSession().accessToken == Fixtures.ideAccessToken)
+        #else
+        do {
+            #expect(try IDETokenStateReader().resolveDatabasePath() != database.path)
+        } catch IDETokenStateError.databaseNotFound(let path) {
+            #expect(path != database.path)
+        }
+        #endif
     }
 
     @Test func errorDescriptionsNeverCarryDatabaseDetails() {

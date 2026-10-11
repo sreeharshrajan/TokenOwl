@@ -30,7 +30,7 @@ public enum ErrorPresentation {
         case let error as OAuthError:
             switch error {
             case .missingClientConfiguration:
-                return "Set GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET before refreshing Google authentication."
+                return "Open or reinstall Antigravity IDE so TokenOwl can read its Google sign-in configuration."
             case .missingRefreshToken:
                 return "No refresh token is available for this credential."
             case .missingAccessToken, .invalidResponse:

@@ -3,10 +3,12 @@ import Foundation
 public struct CodexProcessResult: Sendable {
     public let response: CodexRateLimitResponse
     public let rawJSON: String
+    public let accountEmail: String?
 
-    public init(response: CodexRateLimitResponse, rawJSON: String) {
+    public init(response: CodexRateLimitResponse, rawJSON: String, accountEmail: String? = nil) {
         self.response = response
         self.rawJSON = rawJSON
+        self.accountEmail = accountEmail
     }
 }
 
@@ -87,12 +89,13 @@ final class CodexSessionState: @unchecked Sendable {
     private let maxStderrBytes: Int = 65536
     private var continuations: [String: CheckedContinuation<CodexProcessResult, Error>] = [:]
     private var isFinished = false
+    private var terminalError: Error = CodexError.malformedResponse
 
     func registerContinuation(id: String, continuation: CheckedContinuation<CodexProcessResult, Error>) {
         lock.lock()
         defer { lock.unlock() }
         if isFinished {
-            continuation.resume(throwing: CodexError.malformedResponse)
+            continuation.resume(throwing: terminalError)
         } else {
             continuations[id] = continuation
         }
@@ -100,6 +103,12 @@ final class CodexSessionState: @unchecked Sendable {
 
     func appendStdout(_ data: Data) {
         lock.lock()
+        guard !isFinished else { lock.unlock(); return }
+        guard stdoutBuffer.count + data.count <= 4 * 1024 * 1024 else {
+            lock.unlock()
+            finish(with: CodexError.malformedResponse)
+            return
+        }
         stdoutBuffer.append(data)
         var lines: [String] = []
         while let newlineIndex = stdoutBuffer.firstIndex(of: 0x0A) {
@@ -192,6 +201,7 @@ final class CodexSessionState: @unchecked Sendable {
             return
         }
         isFinished = true
+        terminalError = error
         let pending = continuations
         continuations.removeAll()
         lock.unlock()
@@ -250,6 +260,11 @@ public actor CodexProcessClientLive: CodexProcessClient {
         do {
             try process.run()
         } catch {
+            stdoutPipe.fileHandleForReading.readabilityHandler = nil
+            stderrPipe.fileHandleForReading.readabilityHandler = nil
+            try? stdinPipe.fileHandleForWriting.close()
+            try? stdoutPipe.fileHandleForReading.close()
+            try? stderrPipe.fileHandleForReading.close()
             throw CodexError.processFailed(exitCode: -1)
         }
 
@@ -293,7 +308,7 @@ public actor CodexProcessClientLive: CodexProcessClient {
 
             let stderr = session.collectedStderr
             if !stderr.isEmpty {
-                RedactedLogger.log("Codex stderr: \(stderr)")
+                RedactedLogger.log("Codex process emitted diagnostic output (content omitted)")
             }
         }
 
@@ -313,7 +328,14 @@ public actor CodexProcessClientLive: CodexProcessClient {
                         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<CodexProcessResult, Error>) in
                             session.registerContinuation(id: "0", continuation: continuation)
                             do { try stdinPipe.fileHandleForWriting.write(contentsOf: Data(initReq.utf8)) }
-                            catch { session.finish(with: CodexError.processFailed(exitCode: -1)) }
+                            catch {
+                                // A closed stdin can precede Process's exit callback.
+                                // Let that callback retain the actual exit status;
+                                // the outer timeout still bounds an unresponsive child.
+                                if !process.isRunning {
+                                    session.finish(with: CodexError.processFailed(exitCode: process.terminationStatus))
+                                }
+                            }
                         }
                     } onCancel: { session.finish(with: CodexError.timeout) }
 
@@ -325,21 +347,48 @@ public actor CodexProcessClientLive: CodexProcessClient {
                         try? stdinPipe.fileHandleForWriting.write(contentsOf: data)
                     }
 
+                    let accountRequest = CodexProcessClientLive.makeJSONRPCRequest(
+                        id: "account", method: "account/read", params: ["refreshToken": false]
+                    ) + "\n"
+                    let accountResult = try await withTaskCancellationHandler {
+                        try await withCheckedThrowingContinuation { continuation in
+                            session.registerContinuation(id: "account", continuation: continuation)
+                            do { try stdinPipe.fileHandleForWriting.write(contentsOf: Data(accountRequest.utf8)) }
+                            catch {
+                                // A closed stdin can precede Process's exit callback.
+                                // Let that callback retain the actual exit status;
+                                // the outer timeout still bounds an unresponsive child.
+                                if !process.isRunning {
+                                    session.finish(with: CodexError.processFailed(exitCode: process.terminationStatus))
+                                }
+                            }
+                        }
+                    } onCancel: { session.finish(with: CodexError.timeout) }
+                    let accountEmail = try Self.accountEmail(from: accountResult.rawJSON)
+
                     let readReq = CodexProcessClientLive.makeJSONRPCRequest(
                         id: "1",
                         method: "account/rateLimits/read",
                         params: [:]
                     ) + "\n"
-                    return try await withTaskCancellationHandler {
+                    let quotaResult = try await withTaskCancellationHandler {
                         try await withCheckedThrowingContinuation { continuation in
                             session.registerContinuation(id: "1", continuation: continuation)
                             do {
                                 try stdinPipe.fileHandleForWriting.write(contentsOf: Data(readReq.utf8))
-                            } catch { session.finish(with: CodexError.processFailed(exitCode: -1)) }
+                            } catch {
+                                // A closed stdin can precede Process's exit callback.
+                                // Let that callback retain the actual exit status;
+                                // the outer timeout still bounds an unresponsive child.
+                                if !process.isRunning {
+                                    session.finish(with: CodexError.processFailed(exitCode: process.terminationStatus))
+                                }
+                            }
                         }
                     } onCancel: {
                         session.finish(with: CodexError.timeout)
                     }
+                    return CodexProcessResult(response: quotaResult.response, rawJSON: quotaResult.rawJSON, accountEmail: accountEmail)
                 }
             } catch {
                 await cleanup()
@@ -358,6 +407,15 @@ public actor CodexProcessClientLive: CodexProcessClient {
                 }
             }
         }
+    }
+
+    static func accountEmail(from json: String) throws -> String? {
+        guard let data = json.data(using: .utf8),
+              let envelope = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let result = envelope["result"] as? [String: Any] else { throw CodexError.malformedResponse }
+        guard let account = result["account"] as? [String: Any] else { throw CodexError.notLoggedIn }
+        guard account["type"] as? String == "chatgpt" else { throw CodexError.apiKeyAuthUnsupported }
+        return (account["email"] as? String).flatMap { $0.isEmpty ? nil : $0 }
     }
 
     static func makeJSONRPCRequest(id: String, method: String, params: [String: Any]) -> String {

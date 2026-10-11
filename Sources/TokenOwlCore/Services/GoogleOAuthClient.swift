@@ -13,7 +13,7 @@ public enum OAuthError: LocalizedError, Equatable {
   public var errorDescription: String? {
     switch self {
     case .missingClientConfiguration:
-      return "Set GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET before refreshing Google authentication."
+      return "Open or reinstall Antigravity IDE so TokenOwl can read its Google sign-in configuration."
     case .missingRefreshToken:
       return "Refresh token is unavailable."
     case .invalidResponse:
@@ -36,21 +36,10 @@ public protocol AccessTokenRefreshing: Sendable {
 
 public struct GoogleOAuthClient: AccessTokenRefreshing {
 
-  public init() {}
+  private let configuration: GoogleOAuthConfiguration?
 
-  // OAuth client credentials must be provided through the environment.
-  private var clientID: String {
-    if let env = ProcessInfo.processInfo.environment["GOOGLE_OAUTH_CLIENT_ID"], !env.isEmpty {
-      return env
-    }
-    return ""
-  }
-
-  private var clientSecret: String {
-    if let env = ProcessInfo.processInfo.environment["GOOGLE_OAUTH_CLIENT_SECRET"], !env.isEmpty {
-      return env
-    }
-    return ""
+  public init() {
+    configuration = GoogleOAuthConfiguration.resolve()
   }
 
   private let tokenURL =
@@ -78,7 +67,7 @@ public struct GoogleOAuthClient: AccessTokenRefreshing {
     refreshToken: String
   ) async throws -> RefreshResponse {
 
-    guard !clientID.isEmpty, !clientSecret.isEmpty else {
+    guard let configuration else {
       throw OAuthError.missingClientConfiguration
     }
 
@@ -91,21 +80,22 @@ public struct GoogleOAuthClient: AccessTokenRefreshing {
     )
 
     let parameters = [
-      "client_id": clientID,
-      "client_secret": clientSecret,
+      "client_id": configuration.clientID,
+      "client_secret": configuration.clientSecret,
       "refresh_token": refreshToken,
       "grant_type": "refresh_token",
     ]
 
     request.httpBody = formEncode(parameters)
 
-    let configuration = URLSessionConfiguration.ephemeral
-    configuration.timeoutIntervalForRequest = 15
-    configuration.timeoutIntervalForResource = 20
+    let sessionConfiguration = URLSessionConfiguration.ephemeral
+    sessionConfiguration.timeoutIntervalForRequest = 15
+    sessionConfiguration.timeoutIntervalForResource = 20
 
-    let session = URLSession(configuration: configuration)
+    let session = URLSession(configuration: sessionConfiguration)
+    defer { session.invalidateAndCancel() }
 
-    let (data, response) = try await session.data(for: request)
+    let (data, response) = try await HTTPRetry.data(for: request, session: session)
 
     guard let http = response as? HTTPURLResponse else {
       throw OAuthError.invalidResponse

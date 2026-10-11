@@ -58,7 +58,11 @@ struct RedactedLoggerTests {
     }
 
     @Test func loggingIsOptIn() {
+        #if DEBUG
         #expect(RedactedLogger.isEnabled == (ProcessInfo.processInfo.environment["TOKENOWL_DEBUG"] == "1"))
+        #else
+        #expect(!RedactedLogger.isEnabled)
+        #endif
     }
 }
 

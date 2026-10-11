@@ -18,10 +18,11 @@ public struct CodexQuotaProvider: AIQuotaProvider {
             guard let path = CodexBinaryResolver().resolve() else { throw CodexError.codexNotInstalled }
             resolved = CodexProcessClientLive(binaryPath: path)
         }
-        let summary = CodexQuotaSummary(response: try await resolved.fetchRateLimits().response)
+        let result = try await resolved.fetchRateLimits()
+        let summary = CodexQuotaSummary(response: result.response)
         guard !summary.windows.isEmpty else { throw CodexError.rateLimitsUnavailable }
         return ProviderSnapshot(
-            editor: editor, fetchedAt: Date(), accountEmail: nil,
+            editor: editor, fetchedAt: Date(), accountEmail: result.accountEmail,
             tierDisplayName: summary.planType,
             credentialSourceDisplayName: "Codex login",
             metrics: summary.windows.map {

@@ -1,5 +1,6 @@
 import Foundation
 import Security
+import LocalAuthentication
 
 enum CredentialError: LocalizedError, Equatable {
   case notFound
@@ -34,7 +35,12 @@ public struct AntigravityCredentialReader: AntigravityCredentialReading {
   public init() {}
 
   public func readRawCredential() throws -> String {
+    // Let Security use Touch ID when the item's access policy supports it.
+    // The IDE owns that policy; we never rewrite its credential or ACL.
+    let context = LAContext()
+    context.localizedReason = "Allow TokenOwl to read your Antigravity quota."
     let query: [String: Any] = [
+      kSecUseAuthenticationContext as String: context,
       kSecClass as String: kSecClassGenericPassword,
       kSecAttrService as String: service,
       kSecAttrAccount as String: account,

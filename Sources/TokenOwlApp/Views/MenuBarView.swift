@@ -238,6 +238,7 @@ struct MenuBarView: View {
                 Text(message)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             lastUpdatedLine

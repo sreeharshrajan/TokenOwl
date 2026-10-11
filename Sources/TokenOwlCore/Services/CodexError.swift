@@ -3,6 +3,7 @@ import Foundation
 public enum CodexError: Error, Equatable, LocalizedError {
     case codexNotInstalled
     case unsupportedVersion(found: String)
+    case accountChanged
     case notLoggedIn
     case apiKeyAuthUnsupported
     case timeout
@@ -17,6 +18,8 @@ public enum CodexError: Error, Equatable, LocalizedError {
             return "Codex CLI was not found on this Mac."
         case .unsupportedVersion(let found):
             return "Codex version \(found) is not supported."
+        case .accountChanged:
+            return "Codex account changed. Restart TokenOwl to monitor the newly signed-in account."
         case .notLoggedIn:
             return "Codex is not logged in. Run `codex login`, then refresh."
         case .apiKeyAuthUnsupported:
