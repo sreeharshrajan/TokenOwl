@@ -18,7 +18,7 @@ Antigravity IDE. Paired `GOOGLE_OAUTH_CLIENT_ID` and
 Client credentials are not bundled in this installer.
 
 The MIT license is included beside the installer and inside the app bundle.
-Verify the download with `shasum -a 256 -c TokenOwl-0.2.0-arm64.pkg.sha256`
+Verify the download with `shasum -a 256 -c TokenOwl-0.3.0-arm64.pkg.sha256`
 (use the matching filename for your architecture).
 
 To rebuild from the repository root, run `bash Scripts/package.sh`.

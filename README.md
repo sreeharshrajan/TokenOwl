@@ -175,3 +175,8 @@ environment variables. Keep credentials out of Git.
 Adds OAuth configuration discovery, bounded HTTP retries, safer credential
 file checks, and improved Codex process handling and account identification.
 Notification and preferences enhancements are deferred.
+
+### Version 0.3.0
+
+Updates the macOS release package and version metadata while retaining 0.2.0
+behavior. Notification and preferences enhancements remain deferred.

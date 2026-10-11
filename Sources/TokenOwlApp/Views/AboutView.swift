@@ -22,7 +22,7 @@ struct AboutView: View {
                 Text("TokenOwl")
                     .font(.title2.weight(.bold))
 
-                Text("Version \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.0")")
+                Text("Version \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.3.0")")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
