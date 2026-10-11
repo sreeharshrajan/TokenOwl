@@ -1,13 +1,13 @@
 import Foundation
 
-enum OAuthError: LocalizedError {
+public enum OAuthError: LocalizedError, Equatable {
   case missingClientConfiguration
   case missingRefreshToken
   case invalidResponse
   case httpError(Int)
   case missingAccessToken
 
-  var errorDescription: String? {
+  public var errorDescription: String? {
     switch self {
     case .missingClientConfiguration:
       return "Set GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET before refreshing Google authentication."
@@ -23,7 +23,15 @@ enum OAuthError: LocalizedError {
   }
 }
 
-struct GoogleOAuthClient {
+/// The single capability `OAuthTokenManager` needs. Conforming
+/// `GoogleOAuthClient` keeps the token manager testable without a network.
+public protocol AccessTokenRefreshing: Sendable {
+    func refreshAccessToken(refreshToken: String) async throws -> GoogleOAuthClient.RefreshResponse
+}
+
+public struct GoogleOAuthClient: AccessTokenRefreshing {
+
+  public init() {}
 
   // OAuth client credentials must be provided through the environment.
   private var clientID: String {
@@ -43,10 +51,16 @@ struct GoogleOAuthClient {
   private let tokenURL =
     URL(string: "https://oauth2.googleapis.com/token")!
 
-  struct RefreshResponse: Decodable {
-    let accessToken: String
-    let expiresIn: Int?
-    let tokenType: String?
+  public struct RefreshResponse: Decodable, Sendable {
+    public let accessToken: String
+    public let expiresIn: Int?
+    public let tokenType: String?
+
+    public init(accessToken: String, expiresIn: Int?, tokenType: String?) {
+      self.accessToken = accessToken
+      self.expiresIn = expiresIn
+      self.tokenType = tokenType
+    }
 
     enum CodingKeys: String, CodingKey {
       case accessToken = "access_token"
@@ -55,7 +69,7 @@ struct GoogleOAuthClient {
     }
   }
 
-  func refreshAccessToken(
+  public func refreshAccessToken(
     refreshToken: String
   ) async throws -> RefreshResponse {
 

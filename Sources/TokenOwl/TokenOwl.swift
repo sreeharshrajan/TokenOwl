@@ -1,111 +1,72 @@
 import Foundation
+import TokenOwlCore
 
 @main
 struct TokenOwl {
 
-  static func main() async {
-
-    print("🦉 TokenOwl POC")
-    print("────────────────────────────")
-
-    do {
-      // MARK: Credential Resolution
-
-      print("Resolving Antigravity credential...")
-
-      let provider: AntigravityCredentialProvider = KeychainCredentialProvider()
-      let resolved = try await provider.resolveCredential()
-
-      print("✓ Credential source: \(resolved.source.rawValue)")
-      print("✓ Refresh token available")
-
-      // MARK: OAuth
-
-      print("")
-      print("Refreshing Google access token...")
-
-      let oauth = GoogleOAuthClient()
-
-      let refreshed =
-        try await oauth.refreshAccessToken(
-          refreshToken: resolved.refreshToken
-        )
-
-      print("✓ Google OAuth refresh successful")
-      print("✓ New access token received")
-
-      print("")
-      print("Fetching Antigravity quota and account info...")
-
-      let quotaClient = AntigravityQuotaClient()
-
-      async let quotaTask = quotaClient.fetchQuota(
-        accessToken: refreshed.accessToken
-      )
-      async let accountTask = quotaClient.fetchAccount(
-        accessToken: refreshed.accessToken
-      )
-
-      let (quota, account) = try await (quotaTask, accountTask)
-
-      let snapshot = AntigravitySnapshot(
-        account: account,
-        quota: quota,
-        fetchedAt: Date()
-      )
-
-      print("✓ Quota & account received")
-      print("")
-      print("🦉 TokenOwl")
-      print("────────────────────────────")
-      print("Source:  \(resolved.source.rawValue)")
-      if let email = snapshot.account.email {
-        print("Account: \(email)")
-      }
-      if let tierName = snapshot.account.tierName {
-        print("Plan:    \(tierName)")
-      }
-      print("────────────────────────────")
-      if snapshot.account.tierID == "free-tier" {
-        print("💡 Note: Displaying quota for '\(snapshot.account.email ?? "CLI account")'.")
-        print("   If your Antigravity IDE is logged into a Google AI Pro account,")
-        print("   sign into that account with the Antigravity app to update Keychain.")
+    static func main() async {
+        print("🦉 TokenOwl CLI")
         print("────────────────────────────")
-      }
+        print("Fetching Antigravity quota...")
 
-      var lowestRemaining = 100
+        let service = AntigravityService()
 
-      for group in snapshot.quota.groups {
-        print("")
-        print(group.displayName)
+        do {
+            let snapshot = try await service.fetchSnapshot()
 
-        for bucket in group.buckets {
-          let percent = bucket.remainingPercent
-          lowestRemaining = min(
-            lowestRemaining,
-            percent
-          )
+            print("")
+            print("✓ Credential source: \(snapshot.credentialSource.displayName)")
+            print("✓ Quota received")
 
-          print("  \(bucket.displayName)")
-          print("    \(percent)% remaining")
+            print("")
+            print("🦉 TokenOwl")
+            print("────────────────────────────")
+            print("Source:  \(snapshot.credentialSource.displayName)")
 
-          if let window = bucket.window {
-            print("    Window: \(window)")
-          }
+            if let email = snapshot.account.email {
+                print("Account: \(email)")
+            }
+            if let tier = snapshot.account.tierDisplayName {
+                print("Plan:    \(tier)")
+            }
 
-          if let resetTime = bucket.resetTime {
-            print("    Resets: \(resetTime)")
-          }
+            let now = Date()
+
+            for group in snapshot.quota.groups {
+                print("")
+                print(group.displayName)
+
+                for bucket in group.buckets {
+                    print("  \(bucket.displayName)")
+                    print("    \(bucket.remainingPercent)% remaining")
+
+                    if let window = bucket.window {
+                        print("    Window: \(window)")
+                    }
+
+                    let countdown = ResetCountdown.text(resetAt: bucket.resetAt, now: now)
+                    if !countdown.isEmpty {
+                        print("    \(countdown)")
+                    }
+                }
+            }
+
+            print("")
+            print("────────────────────────────")
+
+            if let mostConstrained = snapshot.quota.mostConstrainedPercent,
+               let bucket = snapshot.quota.mostConstrainedBucket {
+                print("Most constrained: \(mostConstrained)% remaining (\(bucket.displayName))")
+            } else {
+                print("No quota buckets reported.")
+            }
+
+            print("Updated: \(TimeFormatting.clockString(for: snapshot.fetchedAt))")
+
+        } catch {
+            print("")
+            print("✗ \(ErrorPresentation.message(for: error))")
+            exit(1)
         }
-      }
-
-      print("")
-      print("────────────────────────────")
-      print("Most constrained: \(lowestRemaining)% remaining")
-
-    } catch {
-      print("")
-      print("✗ \(error.localizedDescription)")
     }
-  }
 }

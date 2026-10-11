@@ -1,7 +1,7 @@
 import Foundation
 import Security
 
-enum CredentialError: LocalizedError {
+enum CredentialError: LocalizedError, Equatable {
   case notFound
   case keychain(OSStatus)
   case invalidEncoding
@@ -20,12 +20,20 @@ enum CredentialError: LocalizedError {
   }
 }
 
-struct AntigravityCredentialReader {
+/// Abstraction over the Keychain read so credential-provider behaviour can be
+/// tested without touching the real Keychain.
+public protocol AntigravityCredentialReading: Sendable {
+  func readRawCredential() throws -> String
+}
+
+public struct AntigravityCredentialReader: AntigravityCredentialReading {
 
   private let service = "gemini"
   private let account = "antigravity"
 
-  func readRawCredential() throws -> String {
+  public init() {}
+
+  public func readRawCredential() throws -> String {
     let query: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
       kSecAttrService as String: service,
@@ -42,10 +50,13 @@ struct AntigravityCredentialReader {
     )
 
     guard status != errSecItemNotFound else {
+      RedactedLogger.log("Keychain item not found")
       throw CredentialError.notFound
     }
 
     guard status == errSecSuccess else {
+      // An OSStatus is diagnostic metadata, never credential material.
+      RedactedLogger.log("Keychain read failed with status \(status)")
       throw CredentialError.keychain(status)
     }
 

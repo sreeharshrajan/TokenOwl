@@ -1,10 +1,11 @@
 import Foundation
 
-enum QuotaClientError: LocalizedError {
+enum QuotaClientError: LocalizedError, Equatable {
     case invalidResponse
     case httpError(Int)
     case responseTooLarge
     case invalidJSON
+    case decodingFailure
 
     var errorDescription: String? {
         switch self {
@@ -16,6 +17,8 @@ enum QuotaClientError: LocalizedError {
             return "Antigravity quota response exceeded the safety limit."
         case .invalidJSON:
             return "Antigravity quota response was not valid JSON."
+        case .decodingFailure:
+            return "Antigravity quota response could not be read."
         }
     }
 }
@@ -27,7 +30,17 @@ struct QuotaInspectionResult {
     let structure: String
 }
 
-struct AntigravityQuotaClient {
+/// The quota/account capability `AntigravityService` depends on, so the
+/// service can be tested without a network.
+public protocol AntigravityQuotaFetching: Sendable {
+    func fetchQuota(accessToken: String) async throws -> AntigravityQuotaSummary
+    func fetchAccount(accessToken: String) async -> AntigravityAccount
+}
+
+public struct AntigravityQuotaClient: AntigravityQuotaFetching {
+
+    public init() {}
+
 
     private let quotaURL = URL(
         string: "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
@@ -149,7 +162,7 @@ struct AntigravityQuotaClient {
         return "<unknown>"
     }
 
-    func fetchQuota(
+    public func fetchQuota(
         accessToken: String
     ) async throws -> AntigravityQuotaSummary {
 
@@ -193,17 +206,30 @@ struct AntigravityQuotaClient {
             throw QuotaClientError.responseTooLarge
         }
 
-        do {
-            return try JSONDecoder().decode(
-                AntigravityQuotaSummary.self,
-                from: data
-            )
-        } catch {
-            throw QuotaClientError.invalidJSON
-        }
+        // Wire format is converted into the normalized domain model here, so
+        // callers only ever see `Date` reset times, never raw API strings.
+        return try Self.summary(from: data)
     }
 
-    func fetchAccount(
+    /// Decodes and normalizes a quota response body.
+    static func summary(from data: Data) throws -> AntigravityQuotaSummary {
+        let payload: QuotaSummaryPayload
+
+        do {
+            payload = try JSONDecoder().decode(
+                QuotaSummaryPayload.self,
+                from: data
+            )
+        } catch DecodingError.dataCorrupted {
+            throw QuotaClientError.invalidJSON
+        } catch {
+            throw QuotaClientError.decodingFailure
+        }
+
+        return AntigravityQuotaSummary(payload: payload)
+    }
+
+    public func fetchAccount(
         accessToken: String
     ) async -> AntigravityAccount {
         let loadCodeAssistURL = URL(

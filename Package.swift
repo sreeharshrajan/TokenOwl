@@ -6,17 +6,32 @@ import PackageDescription
 let package = Package(
     name: "TokenOwl",
     platforms: [
-        .macOS(.v12)
+        // macOS 14 gives us MenuBarExtra (macOS 13+) and the Observation
+        // framework's @Observable (macOS 14+) used by the menu-bar UI.
+        .macOS(.v14)
     ],
     targets: [
-        // Targets are the basic building blocks of a package, defining a module or a test suite.
-        // Targets can depend on other targets in this package and products from dependencies.
-        .executableTarget(
-            name: "TokenOwl"
+        // Core domain, providers and services. No SwiftUI: everything here is
+        // testable from `swift test` without a running application.
+        .target(
+            name: "TokenOwlCore"
         ),
+
+        // Existing CLI POC diagnostics, kept useful on top of the core services.
+        .executableTarget(
+            name: "TokenOwl",
+            dependencies: ["TokenOwlCore"]
+        ),
+
+        // Native macOS menu-bar application.
+        .executableTarget(
+            name: "TokenOwlApp",
+            dependencies: ["TokenOwlCore"]
+        ),
+
         .testTarget(
             name: "TokenOwlTests",
-            dependencies: ["TokenOwl"]
+            dependencies: ["TokenOwlCore"]
         ),
     ],
     swiftLanguageModes: [.v6]
