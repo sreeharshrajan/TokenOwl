@@ -1,36 +1,35 @@
 # 🦉 TokenOwl
 
 A native macOS **menu-bar app** (with a CLI companion) written in Swift that monitors
-Antigravity AI quota and usage limits.
+Antigravity AI quota and usage limits in real-time.
 
 ```
-🦉 81%   ← menu-bar status item
+🦉 88%   ← menu-bar status item
 ```
 
 ---
 
 ## Features
 
-- **Menu-bar only**: `MenuBarExtra` status item with a compact popover. No Dock icon.
-- **Account transparency**: always shows the Google account, plan/tier, and which
-  credential source produced the numbers on screen.
-- **Real quota**: weekly and 5-hour buckets for Gemini, Claude and GPT, each with its
-  own reset countdown (`Resets in 4h 58m`, `Resets in 3d 6h`, `Resetting now`).
-- **Honest headline number**: the menu-bar percentage is the *lowest* remaining
-  percentage among active quota buckets — buckets are never averaged or combined.
-- **Cached OAuth access tokens**: `OAuthTokenManager` reuses a still-valid access
-  token and only asks Google for a new one when it is missing or within 5 minutes of
-  expiry. Access tokens live in memory only.
-- **Conservative refresh**: one launch refresh, one refresh every 5 minutes, one
-  manual refresh button. No overlapping requests, no refresh storms.
-- **macOS Keychain integration**: reads the local Antigravity credential with native
-  Keychain APIs only. Read-only — TokenOwl never writes credentials.
+- **Menu-bar Native & Compact**: Minimalist `MenuBarExtra` popover with a sleek 300px dark translucent card interface. No Dock icon clutter.
+- **Glanceable Hero Metric**: Full-width header displaying your selected or lowest quota limit with a glowing circular neon arc gauge, model name, and live reset countdown.
+- **Visual Limit Cards**: Distinct rounded cards for Gemini, Claude, and GPT models with smooth emerald-to-gold gradient progress bars and reset times.
+- **Standalone Modal Windows**: Separate native macOS modal floating windows for **Settings** (customizable highlight model and period with full-width pickers) and **About TokenOwl**, automatically closing the menu popover and taking priority focus.
+- **Copy Stats as Markdown**: Quick copy action in the footer gear menu to format and copy all active quota limits to your clipboard in structured Markdown.
+- **Account & Application Transparency**: Displays Google account email, application details, and active credential source.
+- **Native AI Editor Selector**: Switch between installed AI editors (Antigravity IDE, Codex) from a native picker in the popover. Antigravity reads Google account quotas. Codex shows Codex quota windows through `codex app-server` (install Codex CLI and run `codex login`). The Keychain and IDE credential providers remain internal authentication mechanisms under Antigravity — they are not tied to the editor dropdown.
+- **Cached OAuth Tokens**: Reuses valid access tokens and automatically refreshes them with Google OAuth prior to expiration. Tokens are stored in memory only.
+- **Dual Credential Sources**: Resolves credentials from two independent sources:
+  1. **macOS Keychain** — the IDE's current active session (account A). Quota matches the IDE's usage panel exactly.
+  2. **IDE state database envelope** — can retain a previously signed-in account (account B) whose refresh token still works. Tried only after Keychain.
+  TokenOwl prioritizes Keychain first; the IDE envelope is the fallback. Neither source impersonates the other's account.
+- **Graceful Lifecycle**: Quick one-click refresh, 5-minute background cadence, and a dedicated **Quit TokenOwl** option.
 
 ---
 
 ## Requirements
 
-- macOS 14.0 or later
+- macOS 14.0 (Sonoma) or later
 - Swift 6.0+ toolchain
 - Google Antigravity installed and authenticated on your machine
 
@@ -44,12 +43,27 @@ Antigravity AI quota and usage limits.
 swift run TokenOwlApp
 ```
 
-The app appears in the menu bar as `🦉 <n>%` and does not appear in the Dock.
+### Install to /Applications
+
+```bash
+./Scripts/install.sh
+open /Applications/TokenOwl.app
+```
+
+The script compiles the release binary, packages `/Applications/TokenOwl.app` (menu-bar-only, ad-hoc signed), and registers it.
+
+- **Start at login**: System Settings → General → Login Items → `+` → `TokenOwl`.
+- **Relaunch / Restart**: `killall TokenOwlApp && open /Applications/TokenOwl.app`
+- **Uninstall**: `rm -rf /Applications/TokenOwl.app`
 
 ### CLI diagnostics
 
 ```bash
-swift run TokenOwl
+swift run TokenOwl              # fetch and print Antigravity quota
+swift run TokenOwl --codex      # verify Codex connection and print quotas
+swift run TokenOwl --editors    # read-only editor discovery: installation facts
+                                # and quota-adapter availability (no binaries
+                                # executed, no credentials read, no network)
 ```
 
 ### Build & test
@@ -59,27 +73,21 @@ swift build
 swift test
 ```
 
-### Debug affordances (optional)
+### Debug affordances & Testing (optional)
 
-All of these are off by default and only read from the process environment.
+Honored in debug builds only:
 
 | Variable | Effect |
 | --- | --- |
-| `TOKENOWL_DEBUG=1` | Redacted debug logging to stderr (scrubs `Authorization` headers, `access_token`/`refresh_token` form fields, JSON token fields, and `ya29.` Google tokens). |
-| `TOKENOWL_REFRESH_INTERVAL=30` | Refresh period in seconds; product default is 5 minutes. |
-| `TOKENOWL_SIMULATE_FAILURE=stale` | Every refresh after the first fails, to exercise stale-data preservation. |
-| `TOKENOWL_SIMULATE_FAILURE=always` | Refreshes fail from the start, to exercise the empty-state error card. |
-| `TOKENOWL_PREVIEW_PATH=/tmp/menu.png` | Renders the menu UI offscreen and writes a PNG (used for screenshots). |
+| `TOKENOWL_DEBUG=1` | Redacted debug logging to stderr (scrubs tokens, API keys, and auth headers). |
+| `TOKENOWL_REFRESH_INTERVAL=30` | Refresh period in seconds (default is 5 minutes). |
+| `TOKENOWL_SIMULATE_FAILURE=stale` | Simulates refresh failures after initial load. |
+| `TOKENOWL_SIMULATE_FAILURE=always` | Simulates immediate refresh failure. |
+| `TOKENOWL_PREVIEW_EDITOR=codex` | Starts the popover with another editor selected (raw enum value; never persisted). |
+| `TOKENOWL_CODEX_LIVE=1` | Opt-in integration test suite run against locally installed Codex CLI. |
+| `TOKENOWL_PREVIEW_PATH=/tmp/menu.png` | Renders offscreen snapshot PNG of the menu UI. |
 | `TOKENOWL_PREVIEW_LOADING_PATH=/tmp/loading.png` | Renders the first-launch loading state. |
 | `TOKENOWL_STATUS_PATH=/tmp/status.png` | Captures the live menu-bar status item. |
-
-```bash
-TOKENOWL_DEBUG=1 swift run TokenOwlApp
-```
-
-Offscreen captures go through `NSHostingView` + `cacheDisplay(in:to:)`, the same
-drawing path the live UI uses. No screen-recording permission is needed, and
-nothing is written outside the paths given above.
 
 ---
 
@@ -87,44 +95,68 @@ nothing is written outside the paths given above.
 
 ```
 TokenOwlCore            domain + services, no SwiftUI (fully testable)
-├── Models/             Account, Quota (+ payload/domain split), Snapshot, dates
-├── Providers/          CredentialProvider protocol, KeychainCredentialProvider
-├── Security/           Keychain reader, credential decoder, redacting logger
+├── Models/             Account, Quota (+ payload/domain split), Snapshot, DateFormatting,
+│                       CodexRateLimit (response models + summary + windows)
+├── Editors/            AIEditor + status model, EditorDiscoveryService (read-only
+│                       installation discovery), AIQuotaProvider protocol with the
+│                       AntigravityQuotaProvider and CodexQuotaProvider adapters,
+│                       QuotaProviderRegistry, EditorSelection persistence
+├── Providers/          CredentialProvider protocol, KeychainCredentialProvider,
+│                       IDECredentialProvider, IDETokenStateReader (read-only)
+├── Security/           Keychain reader, credential decoder, redacting logger (scrubs
+│                       Bearer tokens, ya29, 1//, sk-*, emails, JWTs)
 └── Services/           AntigravityService, QuotaClient, GoogleOAuthClient,
-                        OAuthTokenManager, ErrorPresentation
+                        OAuthTokenManager, CodexProcessClientLive, CodexBinaryResolver,
+                        ErrorPresentation
 
 TokenOwl                CLI diagnostics (executable)
 TokenOwlApp             menu-bar app (executable)
-└── App/                TokenOwlApp, QuotaStore (@Observable)
+├── App/                TokenOwlApp, QuotaStore (@Observable),
+│                       WindowManager (standalone window manager), MenuPreviewRenderer
 └── Views/              MenuBarView, AccountHeaderView, QuotaGroupView,
-                        QuotaBucketView
+                        QuotaBucketView, PreferencesView, AboutView
 ```
 
-Request pipeline:
+### Codex Integration Architecture
 
-```
-CredentialProvider → OAuthTokenManager → Account identity → QuotaClient
-                                                              ↓
-                                              AntigravitySnapshot → QuotaStore → UI
-```
+TokenOwl communicates with OpenAI Codex via a local child process:
+- **Child process transport**: Spawns the official `codex app-server` binary via Swift native `Process` talking JSON-RPC 2.0 over stdio (one JSON object per line). No Node.js runtime or external server required.
+- **Protocol Handshake**: Sends `initialize` request, sends `initialized` notification, and requests `account/rateLimits/read`.
+- **Zero Token Access Invariant**: TokenOwl **never reads, parses, copies, or logs** `~/.codex/auth.json` or any OAuth/API token. It **never calls** `chatgpt.com/backend-api/*` directly. Codex owns authentication; TokenOwl purely renders presentation.
+- **Supported Codex Versions & Limitations**: Targets Codex CLI 0.x. The `codex app-server` protocol is undocumented as a public API and is version-sensitive. API-key-only auth is unsupported by the app-server and surfaced gracefully as `.apiKeyAuthUnsupported` prompting the user to run `codex login`.
+- **Process Lifecycle & Cleanup**: Every invocation enforces bounded timeouts, active Swift cancellation termination, SIGPIPE protection, and guaranteed child process reaping with SIGKILL fallback to prevent orphan processes.
 
 ---
 
-## Security invariants
+## Security Invariants
 
-- No token or Authorization-header logging (debug logs are redacted).
-- No credential or token persistence; refreshed access tokens are memory-only.
-- Nothing in UserDefaults, crash messages, or UI state.
-- Native Keychain APIs only, read-only.
-- Ephemeral `URLSession` only; network traffic limited to Google endpoints.
-- No analytics, no telemetry, no external backend.
-- No IDE database, IDE state file, or Electron Safe Storage access.
+- **No credential logging**: All sensitive credentials, OAuth tokens, API keys (`sk-*`), emails, JWTs, and `Authorization` headers are scrubbed and excluded from logs via regex-based redaction in `RedactedLogger`.
+- **Zero Codex token handling**: Codex authentication is completely delegated to the local `codex app-server` process. `~/.codex/auth.json` is never accessed.
+- **Memory-only tokens**: Access tokens and refresh tokens are kept in volatile memory by TokenOwl and never persisted to disk, `UserDefaults`, or the Keychain. However, TokenOwl does read credentials from the macOS Keychain and the IDE's SQLite state database (read-only), where the IDE may store refresh tokens outside TokenOwl's control. TokenOwl does not create additional persistent copies of these credentials.
+- **Read-only local access**: Reads the macOS Keychain and local IDE SQLite state database using read-only APIs (`SQLITE_OPEN_READONLY`). Electron Safe Storage is never accessed or decrypted.
+- **Read-only editor discovery**: Installation detection checks known bundle identifiers, standard application locations, and executable names on PATH. It never executes a discovered binary to identify it, never scans the whole filesystem, and never opens chat histories, workspace files, or authentication databases.
+- **Strict Network Scope**: Antigravity requests use official Google endpoints; Codex delegates to its local app-server. No external telemetry or trackers.
 
-See [`docs/ide-token-access-investigation.md`](docs/ide-token-access-investigation.md)
-for the documentation of what was (and was not) established about IDE token access.
+---
+
+## Developer
+
+Developed with ❤️ by **Sreeharsh Rajan**
+
+- **Website**: [sreeharsh.vercel.app](https://sreeharsh.vercel.app/)
+- **Repository**: [github.com/sreeharshrajan/TokenOwl](https://github.com/sreeharshrajan/TokenOwl)
 
 ---
 
 ## License
 
 MIT
+
+### Google OAuth configuration
+
+Google token refresh requires `GOOGLE_OAUTH_CLIENT_ID` and
+`GOOGLE_OAUTH_CLIENT_SECRET` in the TokenOwl process environment. Use OAuth
+client credentials compatible with the existing Antigravity refresh token.
+No client credentials are bundled in the source. Launching from Finder does
+not inherit variables exported in your terminal; launch from the configured
+terminal or configure the app launcher environment. Keep credentials out of Git.

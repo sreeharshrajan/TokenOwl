@@ -74,6 +74,70 @@ struct DateFormattingTests {
         #expect(ResetCountdown.text(resetAt: nil, now: now) == "")
     }
 
+    // MARK: Reset Time Formatting
+
+    @Test func resetTimeFormattingForSameDay() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let locale = Locale(identifier: "en_US_POSIX")
+
+        let testNow = Date(timeIntervalSince1970: 1_791_675_455) // Sun, 11 Oct 2026 23:37:35 GMT
+        // Reset 1 hour before midnight on same day
+        let morning = calendar.startOfDay(for: testNow).addingTimeInterval(10 * 3600) // 10:00 AM
+        let resetToday = morning.addingTimeInterval(4 * 3600 + 30 * 60) // 2:30 PM
+
+        let formatted = ResetTimeFormatting.text(
+            resetAt: resetToday,
+            now: morning,
+            calendar: calendar,
+            locale: locale
+        ).replacingOccurrences(of: "\u{202F}", with: " ")
+
+        #expect(formatted == "Resets at 2:30 PM (in 4h 30m)")
+    }
+
+    @Test func resetTimeFormattingForTomorrow() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let locale = Locale(identifier: "en_US_POSIX")
+
+        let testNow = Date(timeIntervalSince1970: 1_791_675_455) // Sun, 11 Oct 2026 23:37:35 GMT
+        let resetTomorrow = testNow.addingTimeInterval(18 * 3600 + 35 * 60) // Mon 12 Oct 18:12:35 GMT
+
+        let formatted = ResetTimeFormatting.text(
+            resetAt: resetTomorrow,
+            now: testNow,
+            calendar: calendar,
+            locale: locale
+        ).replacingOccurrences(of: "\u{202F}", with: " ")
+
+        #expect(formatted == "Resets tomorrow at 6:12 PM (in 18h 35m)")
+    }
+
+    @Test func resetTimeFormattingForFutureWeekday() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let locale = Locale(identifier: "en_US_POSIX")
+
+        let testNow = Date(timeIntervalSince1970: 1_791_675_455) // Sun, 11 Oct 2026 23:37:35 GMT
+        let resetWed = testNow.addingTimeInterval(3 * 86_400) // Wed 14 Oct
+
+        let formatted = ResetTimeFormatting.text(
+            resetAt: resetWed,
+            now: testNow,
+            calendar: calendar,
+            locale: locale
+        )
+
+        #expect(formatted.contains("Resets Tue at"))
+        #expect(formatted.contains("3d"))
+    }
+
+    @Test func resetTimeFormattingResettingNow() {
+        #expect(ResetTimeFormatting.text(resetAt: now.addingTimeInterval(10), now: now) == "Resetting now")
+        #expect(ResetTimeFormatting.text(resetAt: nil, now: now) == "")
+    }
+
     // MARK: Updated labels
 
     @Test func updatedJustNowWithinAMinute() {

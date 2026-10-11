@@ -91,4 +91,50 @@ struct QuotaDecodingTests {
         #expect(summary.groups.count == 2)
         #expect(summary.allBuckets.count == 4)
     }
+
+    // MARK: Retry-After parsing (HTTP 429)
+
+    @Test func parsesRetryAfterDeltaSeconds() {
+        let response = HTTPURLResponse(
+            url: URL(string: "https://cloudcode-pa.googleapis.com")!,
+            statusCode: 429,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Retry-After": "7"]
+        )!
+
+        #expect(AntigravityQuotaClient.retryAfterSeconds(from: response) == 7)
+    }
+
+    @Test func parsesRetryAfterHTTPDate() {
+        // 2023-11-14 22:13:20 UTC; header says 2023-11-15 00:00:00 GMT.
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let response = HTTPURLResponse(
+            url: URL(string: "https://cloudcode-pa.googleapis.com")!,
+            statusCode: 429,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Retry-After": "Wed, 15 Nov 2023 00:00:00 GMT"]
+        )!
+
+        #expect(
+            AntigravityQuotaClient.retryAfterSeconds(from: response, now: now) == 6_400
+        )
+    }
+
+    @Test func missingOrMalformedRetryAfterIsNil() {
+        let missing = HTTPURLResponse(
+            url: URL(string: "https://cloudcode-pa.googleapis.com")!,
+            statusCode: 429,
+            httpVersion: "HTTP/1.1",
+            headerFields: nil
+        )!
+        #expect(AntigravityQuotaClient.retryAfterSeconds(from: missing) == nil)
+
+        let malformed = HTTPURLResponse(
+            url: URL(string: "https://cloudcode-pa.googleapis.com")!,
+            statusCode: 429,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Retry-After": "soon"]
+        )!
+        #expect(AntigravityQuotaClient.retryAfterSeconds(from: malformed) == nil)
+    }
 }

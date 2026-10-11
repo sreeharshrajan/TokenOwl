@@ -4,6 +4,12 @@ Status: **documentation only** (phase 0 of the menu-bar implementation phase).
 No new reverse engineering was performed. No token was printed, logged, or persisted
 while producing this document.
 
+> **Superseded in part by a later phase.** Section 7 records the subsequent,
+> explicitly-scoped implementation of `IDECredentialProvider`, including the
+> discovery that the stored value is a base64 envelope carrying a **plaintext
+> refresh token** — which also corrects the scope claim in 3.2 for this
+> artifact. Electron Safe Storage is still never decrypted by TokenOwl.
+
 ---
 
 ## 1. The ambiguity
@@ -120,3 +126,115 @@ Consequences:
 - No Electron Safe Storage decryption.
 - No `IDECredentialProvider` implementation.
 - No token printing, logging, or persistence during verification of this document.
+
+---
+
+## 7. Later phase — plaintext IDE session envelope (implemented)
+
+The phase-0 non-goals above were scoped to that phase. A later phase, explicitly
+requested, implemented the plaintext path — and in doing so found that the stored
+artifact is richer (and differently shaped) than section 3.1 assumed.
+
+### 7.1 The actual stored format
+
+The value at `antigravityUnifiedStateSync.oauthToken` is **not** a bare bearer
+token. It is:
+
+```
+base64(  JSON { context, state } … oauthTokenInfoSentinelKey: <nested base64> … )
+              └── nested base64 decodes to a small binary blob containing, as
+                  plaintext substrings, an access token (ya29.…), a refresh
+                  token (1//…), and account/context fields
+```
+
+Observed properties (values never printed): outer length ~1 KB, outer decodes to
+~800 bytes that are not wholly valid UTF-8 (which is why a naive UTF-8 decode of
+the outer layer silently yields nothing), exactly one nested base64 run carrying
+both tokens. No expiry field accompanies them, so freshness can only be
+established by asking Google.
+
+### 7.2 What is implemented
+
+- `IDETokenStateReader`: read-only SQLite access (`SQLITE_OPEN_READONLY`) to
+  `~/Library/Application Support/Antigravity IDE/User/globalStorage/state.vscdb`,
+  key `antigravityUnifiedStateSync.oauthToken`, path overridable via
+  `TOKENOWL_IDE_STATE_PATH`. It unwraps the envelope with a bounded (≤3 round),
+  de-duplicated base64 walk, extracts both tokens by pattern, accepts a bare
+  token as well (the format section 3.1 observed), and reports an unparseable
+  value as `tokenNotRecognized` rather than as a token. Binary layers are
+  searched lossily: replacement characters cannot match either pattern.
+- `IDECredentialProvider`: exposes the recovered pair as
+  `ResolvedCredential(source: .ide, accessToken:refreshToken:)` — **refreshable**.
+  Both tokens live in memory only and are never persisted, printed, or logged
+  (no value, no length, no hash).
+- `OAuthTokenManager` renews IDE sessions exactly like Keychain ones (memory-only
+  access token, 5-minute expiry margin, coalesced refresh). The first quota
+  request may still be sent with the envelope's stale access token; the 401 →
+  invalidate → refresh → retry path then renews it once, after which the cached
+  token carries Google's `expires_in`.
+- Credential priority in `AntigravityService`: **Keychain credential → IDE
+  state-database envelope** (see 7.5 for why the envelope cannot be first),
+  with silent fallback on credential-shaped failures — including an HTTP
+  401/403 from the quota API and a 400/401 from a refresh Google refuses
+  (revoked refresh token). A source that hands off a fetch is skipped for
+  15 minutes; the last source is never skipped.
+
+### 7.3 What is still not implemented
+
+- Electron Safe Storage decryption — untouched, as before. It remains the path
+  to whatever *other* durable material the IDE keeps there; the session envelope
+  itself needed only decoding.
+- Any write to the IDE's state database — the reader opens it read-only.
+- Any persistence of the recovered tokens by TokenOwl.
+
+### 7.4 Corrected findings from the earlier verification
+
+Two conclusions from the first cut of this section were wrong and are retracted:
+
+1. **"The stored value was sent to Google and rejected as stale."** The 401
+   (`UNAUTHENTICATED`) was an artifact of submitting the *envelope* as a bearer
+   token. Once the envelope is unwrapped, the inner access token is indeed
+   stale at the time of testing, but that is a separate, expected fact — access
+   tokens live about an hour.
+2. **"Refreshing requires material TokenOwl does not have."** The envelope
+   carries a plaintext `1//` refresh token, and Google's token endpoint accepts
+   it with TokenOwl's installed-app client (HTTP 200 in verification). IDE
+   sessions are therefore refreshable by TokenOwl, which makes the IDE source
+   durable rather than time-boxed.
+
+This also **corrects the scope claim in 3.2 for this artifact**: long-lived
+refresh material from the IDE *is* readable in plaintext from `state.vscdb` —
+Safe Storage protects a different (still untouched) blob. What 3.2 says about
+the credential blob Electron encrypts remains true; what must no longer be
+said is that *all* long-lived IDE credential material requires Safe Storage.
+
+Verified end-to-end after the fix (live run, no secrets printed): IDE session
+read → source `Antigravity IDE` → quota received → the IDE's Google account
+(distinct from the Keychain account), menu label `🦉 0%` from that account's
+real quota, preview and status-item captures regenerated with no render
+placeholders. Tests: 98 passing (reader envelope/bare/garbage parsing, provider
+credential shapes, stale-session refresh, revoked-refresh fallback, cooldown
+expiry).
+
+### 7.5 The envelope is not the active login (priority corrected)
+
+A user-visible mismatch forced the last correction: the IDE was signed into
+account A, while TokenOwl showed account B. Verified facts, no secrets printed:
+
+- The envelope's refresh token belongs to account B and still works, so the
+  reader and provider were behaving correctly — the *premise* was wrong.
+- The Keychain credential belongs to account A, and its quota (64/98/98/95)
+  matches the IDE's own Models & Usage panel exactly. The envelope's account B
+  quota (0/100/0/100) does not.
+- No other key in `state.vscdb` (19k+ keys scanned; names and account
+  mentions only) holds a token for the active login. The IDE's live session
+  lives in Electron Safe Storage, which remains out of scope.
+
+Conclusion: the Keychain item (`gemini`/`antigravity`) is where the IDE keeps
+its **current** session; the state-database envelope can retain a
+**previously** signed-in account after a sign-out/switch, because the refresh
+token keeps working and nothing clears it. Priority is therefore
+**Keychain → envelope**, the opposite of the original phase-2 directive, whose
+premise ("the envelope reflects the IDE's signed-in account") is retracted.
+The envelope remains useful as a fallback and will automatically become
+correct if the IDE ever writes the active account into it.

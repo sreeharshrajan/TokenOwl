@@ -97,11 +97,17 @@ enum MenuPreviewRenderer {
 
     // MARK: Shared
 
+    /// Debug-build affordance: in release builds this always returns `nil`,
+    /// so preview/status env vars written into an installed app do nothing.
     private static func path(named key: String) -> String? {
+        #if DEBUG
         guard let path = ProcessInfo.processInfo.environment[key],
               !path.isEmpty
         else { return nil }
         return path
+        #else
+        return nil
+        #endif
     }
 
     private static func write(view: NSView, to path: String, label: String) {

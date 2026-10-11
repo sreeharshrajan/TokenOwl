@@ -7,8 +7,14 @@ import Foundation
 /// emitted by TokenOwl, even in debug builds.
 public enum RedactedLogger {
 
+    /// Debug logging is a debug-build affordance only: release builds never
+    /// log, regardless of the process environment.
     public static var isEnabled: Bool {
-        ProcessInfo.processInfo.environment["TOKENOWL_DEBUG"] == "1"
+        #if DEBUG
+        return ProcessInfo.processInfo.environment["TOKENOWL_DEBUG"] == "1"
+        #else
+        return false
+        #endif
     }
 
     public static func log(_ message: String) {
@@ -59,6 +65,38 @@ public enum RedactedLogger {
             // Google access tokens are prefixed with `ya29.`
             RedactionPattern(
                 pattern: #"ya29\.[A-Za-z0-9._\-]+"#,
+                replacement: "<redacted>"
+            ),
+            // Bare refresh tokens (`1//…`), as carried in OAuth form bodies
+            // and inside the IDE session envelope, even without a
+            // `refresh_token=` label around them.
+            RedactionPattern(
+                pattern: #"\b1//[A-Za-z0-9._\-]{20,}"#,
+                replacement: "<redacted>"
+            ),
+            // OpenAI / Codex API key tokens (`sk-...`)
+            RedactionPattern(
+                pattern: #"\bsk-[A-Za-z0-9._\-]{8,}"#,
+                replacement: "<redacted>"
+            ),
+            // token=... / token: ... in diagnostic output or URLs
+            RedactionPattern(
+                pattern: #"(?i)\btoken[^\S\r\n]*[:=][^\S\r\n]*\S+"#,
+                replacement: "token=<redacted>"
+            ),
+            // Generic Bearer <token>
+            RedactionPattern(
+                pattern: #"(?i)\bBearer\s+\S+"#,
+                replacement: "Bearer <redacted>"
+            ),
+            // JWT-like structures (header.payload.signature)
+            RedactionPattern(
+                pattern: #"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+"#,
+                replacement: "<redacted>"
+            ),
+            // Emails
+            RedactionPattern(
+                pattern: #"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"#,
                 replacement: "<redacted>"
             ),
         ]

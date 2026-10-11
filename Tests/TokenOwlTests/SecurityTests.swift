@@ -35,6 +35,22 @@ struct RedactedLoggerTests {
         #expect(!output.contains("a0AfH"))
     }
 
+    @Test func redactsBareIDERefreshTokens() {
+        let token = "1//0cFixtureRefreshToken_0123456789abcdefghijklmno"
+        let input = "envelope carried \(token) in plaintext"
+        let output = RedactedLogger.redact(input)
+
+        #expect(!output.contains(token))
+        #expect(output.contains("envelope carried"))
+        #expect(output.contains("in plaintext"))
+    }
+
+    @Test func leavesShortSlashPathsIntact() {
+        let input = "retry path 1//tmp/short"
+
+        #expect(RedactedLogger.redact(input) == input)
+    }
+
     @Test func leavesOrdinaryMessagesIntact() {
         let input = "Quota refresh succeeded in 412 ms (source: Keychain credential)"
 
@@ -83,6 +99,28 @@ struct ErrorPresentationTests {
             ErrorPresentation.message(for: CredentialDecodingError.invalidJSON)
                 == "The stored Antigravity credential could not be read."
         )
+    }
+
+    @Test func mapsIDEStateAndAccessOnlyFailures() {
+        #expect(
+            ErrorPresentation.message(for: IDETokenStateError.databaseNotFound(path: "/tmp/x"))
+                == "The Antigravity IDE session was not found."
+        )
+        #expect(
+            ErrorPresentation.message(for: IDETokenStateError.rowNotFound)
+                == "No session token was found in the Antigravity IDE state."
+        )
+        #expect(
+            ErrorPresentation.message(for: OAuthError.credentialExpired)
+                == "The IDE session token expired and could not be refreshed."
+        )
+
+        // IDE errors never leak the path, key, or token value.
+        let message = ErrorPresentation.message(
+            for: IDETokenStateError.databaseNotFound(path: "/Users/someone/Library/secret.vscdb")
+        )
+        #expect(!message.contains("secret.vscdb"))
+        #expect(!message.contains("/Users"))
     }
 
     @Test func neverSurfacesUnknownErrorPayloads() {

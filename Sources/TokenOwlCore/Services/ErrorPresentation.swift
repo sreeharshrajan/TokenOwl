@@ -35,10 +35,26 @@ public enum ErrorPresentation {
                 return "No refresh token is available for this credential."
             case .missingAccessToken, .invalidResponse:
                 return "Google authentication needs attention."
+            case .credentialExpired:
+                return "The IDE session token expired and could not be refreshed."
             case .httpError(let status):
                 return (status == 400 || status == 401 || status == 403)
                     ? "Google authentication needs attention."
                     : "Google authentication could not be completed."
+            }
+
+        case let error as IDETokenStateError:
+            switch error {
+            case .databaseNotFound:
+                return "The Antigravity IDE session was not found."
+            case .databaseUnreadable:
+                return "The Antigravity IDE session could not be read."
+            case .rowNotFound:
+                return "No session token was found in the Antigravity IDE state."
+            case .emptyToken:
+                return "The Antigravity IDE session token is empty."
+            case .tokenNotRecognized:
+                return "The Antigravity IDE session token could not be read."
             }
 
         case let error as QuotaClientError:
@@ -47,6 +63,8 @@ public enum ErrorPresentation {
                 return "Google authentication needs attention."
             case .httpError(429):
                 return "Google is rate-limiting quota requests. Try again shortly."
+            case .rateLimited:
+                return "Google is rate-limiting quota requests. Try again shortly."
             case .httpError:
                 return "Google could not serve the quota request."
             case .invalidJSON, .decodingFailure:
@@ -54,6 +72,9 @@ public enum ErrorPresentation {
             case .invalidResponse, .responseTooLarge:
                 return "Google returned an unexpected quota response."
             }
+
+        case let error as CodexError:
+            return error.localizedDescription
 
         case is URLError:
             return "Network unavailable. Check your connection and try again."

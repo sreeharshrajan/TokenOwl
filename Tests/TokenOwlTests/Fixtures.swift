@@ -25,6 +25,39 @@ enum Fixtures {
 
     static let credentialWithoutToken = #"{"unrelated":true}"#
 
+    /// Synthetic stand-in for the IDE session access token. Never a real one.
+    static let ideSessionToken = "fixture-ide-session-token"
+
+    /// Synthetic Google-shaped access token (`ya29.` prefix required by the
+    /// reader's extraction pattern). Never a real one.
+    static let ideAccessToken =
+        "ya29.a0AfFixtureAccessToken_0123456789abcdefghijklm"
+
+    /// Synthetic Google-shaped refresh token (`1//` prefix, opaque tail).
+    /// Never a real one.
+    static let ideRefreshToken =
+        "1//0cFixtureRefreshToken_0123456789abcdefghijklmno"
+
+    /// Synthetic stand-in for the IDE's stored value: base64 of a JSON state
+    /// that carries the sentinel key followed by a base64 session blob
+    /// holding both tokens — the same nesting the real database uses.
+    static let ideSessionEnvelope: String = {
+        let blob = "session-blob-begin "
+            + ideAccessToken + " " + ideRefreshToken
+            + " session-blob-end"
+        let nested = Data(blob.utf8).base64EncodedString()
+        let outer = #"{"context":"fixture","state":"oauthTokenInfoSentinelKey:\#(nested)"}"#
+        return Data(outer.utf8).base64EncodedString()
+    }()
+
+    /// An envelope whose session blob carries only an access token.
+    static let ideSessionEnvelopeAccessOnly: String = {
+        let blob = "session-blob-begin " + ideAccessToken + " session-blob-end"
+        let nested = Data(blob.utf8).base64EncodedString()
+        let outer = #"{"context":"fixture","state":"oauthTokenInfoSentinelKey:\#(nested)"}"#
+        return Data(outer.utf8).base64EncodedString()
+    }()
+
     // MARK: Quota
 
     static let quotaJSON = """

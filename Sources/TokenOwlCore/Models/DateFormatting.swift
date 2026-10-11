@@ -33,36 +33,95 @@ public enum DateParser {
 /// Human readable quota reset countdowns, e.g. `Resets in 4h 58m`.
 public enum ResetCountdown {
 
-    /// - Parameters:
-    ///   - resetAt: the normalized reset instant
-    ///   - now: injectable clock, used by tests
-    public static func text(resetAt: Date?, now: Date = Date()) -> String {
-        guard let resetAt else { return "" }
+    public static func duration(resetAt: Date?, now: Date = Date()) -> String? {
+        guard let resetAt else { return nil }
 
         let remaining = resetAt.timeIntervalSince(now)
 
         // Already resetting (or within the same minute).
-        guard remaining >= 60 else { return "Resetting now" }
+        guard remaining >= 60 else { return nil }
 
         let totalSeconds = Int(remaining.rounded())
 
         if totalSeconds < 3600 {
-            return "Resets in \(totalSeconds / 60)m"
+            return "\(totalSeconds / 60)m"
         }
 
         if totalSeconds < 86_400 {
             let hours = totalSeconds / 3600
             let minutes = (totalSeconds % 3600) / 60
             return minutes == 0
-                ? "Resets in \(hours)h"
-                : "Resets in \(hours)h \(minutes)m"
+                ? "\(hours)h"
+                : "\(hours)h \(minutes)m"
         }
 
         let days = totalSeconds / 86_400
         let hours = (totalSeconds % 86_400) / 3600
         return hours == 0
-            ? "Resets in \(days)d"
-            : "Resets in \(days)d \(hours)h"
+            ? "\(days)d"
+            : "\(days)d \(hours)h"
+    }
+
+    /// - Parameters:
+    ///   - resetAt: the normalized reset instant
+    ///   - now: injectable clock, used by tests
+    public static func text(resetAt: Date?, now: Date = Date()) -> String {
+        guard let resetAt else { return "" }
+        guard let dur = duration(resetAt: resetAt, now: now) else {
+            return "Resetting now"
+        }
+        return "Resets in \(dur)"
+    }
+}
+
+/// Human readable quota reset times showing exact clock time and countdown,
+/// e.g. `Resets at 11:06 PM (in 4h 59m)` or `Resets tomorrow at 12:42 PM (in 18h 35m)`.
+public enum ResetTimeFormatting {
+
+    public static func text(
+        resetAt: Date?,
+        now: Date = Date(),
+        calendar: Calendar = .current,
+        locale: Locale = .current
+    ) -> String {
+        guard let resetAt else { return "" }
+        guard let dur = ResetCountdown.duration(resetAt: resetAt, now: now) else {
+            return "Resetting now"
+        }
+
+        let timeFormatter = DateFormatter()
+        timeFormatter.locale = locale
+        timeFormatter.timeZone = calendar.timeZone
+        timeFormatter.dateStyle = .none
+        timeFormatter.timeStyle = .short
+        let timeString = timeFormatter.string(from: resetAt)
+
+        let startOfNow = calendar.startOfDay(for: now)
+        let startOfReset = calendar.startOfDay(for: resetAt)
+        let days = calendar.dateComponents([.day], from: startOfNow, to: startOfReset).day ?? 0
+
+        let dayPrefix: String
+        if days <= 0 {
+            dayPrefix = "at \(timeString)"
+        } else if days == 1 {
+            dayPrefix = "tomorrow at \(timeString)"
+        } else if days < 7 {
+            let weekdayFormatter = DateFormatter()
+            weekdayFormatter.locale = locale
+            weekdayFormatter.timeZone = calendar.timeZone
+            weekdayFormatter.dateFormat = "EEE"
+            let weekday = weekdayFormatter.string(from: resetAt)
+            dayPrefix = "\(weekday) at \(timeString)"
+        } else {
+            let monthDayFormatter = DateFormatter()
+            monthDayFormatter.locale = locale
+            monthDayFormatter.timeZone = calendar.timeZone
+            monthDayFormatter.dateFormat = "MMM d"
+            let monthDay = monthDayFormatter.string(from: resetAt)
+            dayPrefix = "\(monthDay) at \(timeString)"
+        }
+
+        return "Resets \(dayPrefix) (in \(dur))"
     }
 }
 

@@ -14,7 +14,11 @@ let package = Package(
         // Core domain, providers and services. No SwiftUI: everything here is
         // testable from `swift test` without a running application.
         .target(
-            name: "TokenOwlCore"
+            name: "TokenOwlCore",
+            linkerSettings: [
+                // Read-only access to the IDE's SQLite state database.
+                .linkedLibrary("sqlite3")
+            ]
         ),
 
         // Existing CLI POC diagnostics, kept useful on top of the core services.

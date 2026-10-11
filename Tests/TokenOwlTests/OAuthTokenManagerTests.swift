@@ -181,6 +181,81 @@ struct OAuthTokenManagerTests {
         #expect(try await manager.accessToken() == "access-1")
         #expect(await client.refreshCount == 1)
     }
+
+    // MARK: Access-token-only credentials (IDE session)
+
+    @Test func accessOnlyCredentialIsUsedWithoutRefreshing() async throws {
+        let client = MockOAuthClient()
+        let manager = OAuthTokenManager(client: client, clock: { [now] in now })
+
+        await manager.install(
+            credential: ResolvedCredential(
+                source: .ide,
+                refreshToken: nil,
+                accessToken: Fixtures.ideSessionToken,
+                accessTokenExpiresAt: nil
+            )
+        )
+
+        #expect(try await manager.accessToken() == Fixtures.ideSessionToken)
+        #expect(await client.refreshCount == 0)
+    }
+
+    @Test func accessOnlyCredentialFailsInsteadOfRefreshing() async {
+        let client = MockOAuthClient()
+        let manager = OAuthTokenManager(client: client, clock: { [now] in now })
+
+        await manager.install(
+            credential: ResolvedCredential(
+                source: .ide,
+                refreshToken: nil,
+                accessToken: "expired-ide-token",
+                accessTokenExpiresAt: now.addingTimeInterval(-60)
+            )
+        )
+
+        await #expect(throws: OAuthError.credentialExpired) {
+            _ = try await manager.accessToken()
+        }
+
+        // Nothing was sent to Google: this credential cannot be refreshed.
+        #expect(await client.refreshCount == 0)
+    }
+
+    @Test func newerAccessOnlyCredentialReplacesCachedToken() async throws {
+        let client = MockOAuthClient()
+        let manager = OAuthTokenManager(client: client, clock: { [now] in now })
+
+        await manager.install(
+            credential: ResolvedCredential(source: .ide, accessToken: "ide-token-a")
+        )
+        #expect(try await manager.accessToken() == "ide-token-a")
+
+        // The IDE rotates its token; the newest read wins.
+        await manager.install(
+            credential: ResolvedCredential(source: .ide, accessToken: "ide-token-b")
+        )
+
+        #expect(try await manager.accessToken() == "ide-token-b")
+        #expect(await client.refreshCount == 0)
+    }
+
+    @Test func refreshableCredentialReplacesAccessOnlyCredential() async throws {
+        let client = MockOAuthClient()
+        let manager = OAuthTokenManager(client: client, clock: { [now] in now })
+
+        await manager.install(
+            credential: ResolvedCredential(source: .ide, accessToken: Fixtures.ideSessionToken)
+        )
+        #expect(try await manager.accessToken() == Fixtures.ideSessionToken)
+
+        await manager.install(
+            credential: ResolvedCredential(source: .keychain, refreshToken: "fixture-refresh-token")
+        )
+
+        #expect(try await manager.accessToken() == "access-1")
+        #expect(await client.refreshCount == 1)
+    }
 }
 
 // MARK: - Doubles

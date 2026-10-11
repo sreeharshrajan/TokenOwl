@@ -77,7 +77,7 @@ struct QuotaDomainTests {
             credentialSource: .keychain
         )
 
-        #expect(snapshot.credentialSource.displayName == "Keychain credential")
+        #expect(snapshot.credentialSource.displayName == "CLI Keychain credential")
         #expect(snapshot.account.tierDisplayName == "Antigravity Free")
         #expect(snapshot.account.email == "fixture@example.com")
     }

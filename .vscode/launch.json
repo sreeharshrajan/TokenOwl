@@ -19,6 +19,26 @@
             "target": "TokenOwl",
             "configuration": "release",
             "preLaunchTask": "swift: Build Release TokenOwl"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:TokenOwl}",
+            "name": "Debug TokenOwlApp",
+            "target": "TokenOwlApp",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug TokenOwlApp"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:TokenOwl}",
+            "name": "Release TokenOwlApp",
+            "target": "TokenOwlApp",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release TokenOwlApp"
         }
     ]
 }

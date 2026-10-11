@@ -1,28 +1,43 @@
 import SwiftUI
 import TokenOwlCore
 
-/// A single quota window: name, percentage, progress bar, reset countdown.
+/// A single quota window: name, percentage, sleek gradient progress bar, exact reset time and countdown.
 struct QuotaBucketView: View {
 
     let bucket: QuotaBucket
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 4) {
+            // Label & Percentage row
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(bucket.displayName)
-                    .font(.subheadline)
+                Text(displayName)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.primary)
+
                 Spacer(minLength: 8)
+
                 Text("\(bucket.remainingPercent)%")
-                    .font(.subheadline.monospacedDigit())
-                    .fontWeight(.medium)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(percentageColor)
             }
 
-            QuotaBar(fraction: progress, color: severityColor)
+            // Gradient progress bar
+            QuotaBar(fraction: progress, severity: bucket.severity)
+                .padding(.vertical, 1)
 
-            if !countdown.isEmpty {
-                Text(countdown)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            // Reset time with clock icon
+            if !resetText.isEmpty {
+                HStack(spacing: 5) {
+                    Image(systemName: "clock")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary.opacity(0.7))
+
+                    Text(resetText)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -30,20 +45,32 @@ struct QuotaBucketView: View {
         .accessibilityLabel(accessibilityLabel)
     }
 
+    private var displayName: String {
+        var name = bucket.displayName
+        if name.hasSuffix(" Remaining") {
+            name = String(name.dropLast(" Remaining".count))
+        }
+        return name
+    }
+
     private var progress: Double {
         min(max(bucket.remainingFraction, 0), 1)
     }
 
-    private var countdown: String {
-        ResetCountdown.text(resetAt: bucket.resetAt)
+    private var resetText: String {
+        ResetTimeFormatting.text(resetAt: bucket.resetAt)
     }
 
-    /// System colors only, so Light/Dark Mode is handled by the system and
-    /// the numeric percentage always stays visible next to the bar.
-    private var severityColor: Color {
+    /// Matches the screenshot colors:
+    /// Weekly limit displays in bright green; Five hour limit displays in vibrant yellow/gold.
+    private var percentageColor: Color {
         switch bucket.severity {
         case .normal:
-            return .green
+            let lower = displayName.lowercased()
+            if lower.contains("five") || lower.contains("5") {
+                return Color(red: 0.96, green: 0.85, blue: 0.35)
+            }
+            return Color(red: 0.25, green: 0.88, blue: 0.5)
         case .warning:
             return .orange
         case .critical, .exhausted:
@@ -52,36 +79,60 @@ struct QuotaBucketView: View {
     }
 
     private var accessibilityLabel: String {
-        var label = "\(bucket.displayName): \(bucket.remainingPercent) percent remaining"
-        if !countdown.isEmpty {
-            label += ", \(countdown)"
+        var label = "\(displayName): \(bucket.remainingPercent) percent remaining"
+        if !resetText.isEmpty {
+            label += ", \(resetText)"
         }
         return label
     }
 }
 
-/// A filled capacity bar built from plain SwiftUI shapes.
-///
-/// `ProgressView` is avoided deliberately: offscreen rendering of
-/// `NSProgressIndicator`-backed controls is unreliable, and the numeric
-/// percentage is always shown next to the bar, so the bar itself carries no
-/// information that is not repeated in text or the accessibility label.
+/// A sleek filled capacity bar with gradient fill matching the screenshot.
 private struct QuotaBar: View {
 
     let fraction: Double
-    let color: Color
+    let severity: QuotaSeverity
 
     var body: some View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
+                // Background Track
                 Capsule()
-                    .fill(Color.secondary.opacity(0.25))
+                    .fill(Color.white.opacity(0.12))
+
+                // Gradient Progress Fill
                 Capsule()
-                    .fill(color)
-                    .frame(width: geometry.size.width * fraction)
+                    .fill(barGradient)
+                    .frame(width: max(geometry.size.width * fraction, 0))
             }
         }
-        .frame(height: 8)
+        .frame(height: 4.5)
         .accessibilityHidden(true)
+    }
+
+    private var barGradient: LinearGradient {
+        switch severity {
+        case .exhausted, .critical:
+            return LinearGradient(
+                colors: [Color.red, Color.orange],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        case .warning:
+            return LinearGradient(
+                colors: [Color(red: 0.95, green: 0.75, blue: 0.2), Color(red: 0.95, green: 0.55, blue: 0.15)],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        case .normal:
+            return LinearGradient(
+                colors: [
+                    Color(red: 0.22, green: 0.85, blue: 0.45),
+                    Color(red: 0.95, green: 0.85, blue: 0.28)
+                ],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        }
     }
 }

@@ -54,12 +54,17 @@ public actor OAuthTokenManager {
     /// A different refresh token invalidates everything we hold. The same
     /// refresh token only seeds the cache when we do not have a token yet, so
     /// an already-refreshed token is never downgraded by a stale credential.
+    ///
+    /// A credential that cannot be refreshed (an access-only session) is
+    /// re-seeded on every install: its source is the truth and rotates that
+    /// token itself, so the newest read always wins.
     public func install(credential: ResolvedCredential) {
         if credential.refreshToken != self.credential?.refreshToken {
             cachedToken = nil
         }
 
-        if cachedToken == nil, let accessToken = credential.accessToken {
+        if (cachedToken == nil || !credential.canRefresh),
+           let accessToken = credential.accessToken {
             cachedToken = CachedToken(
                 value: accessToken,
                 expiresAt: credential.accessTokenExpiresAt
@@ -124,10 +129,16 @@ public actor OAuthTokenManager {
             throw OAuthError.missingRefreshToken
         }
 
+        // An access-only credential (no refresh token) cannot be renewed.
+        // The service falls back to the next credential source.
+        guard credential.canRefresh, let refreshToken = credential.refreshToken else {
+            throw OAuthError.credentialExpired
+        }
+
         RedactedLogger.log("Refreshing Google access token")
 
         let response = try await client.refreshAccessToken(
-            refreshToken: credential.refreshToken
+            refreshToken: refreshToken
         )
 
         guard !response.accessToken.isEmpty else {

@@ -6,6 +6,9 @@ public enum OAuthError: LocalizedError, Equatable {
   case invalidResponse
   case httpError(Int)
   case missingAccessToken
+  /// The credential only carried a short-lived access token (IDE session)
+  /// and TokenOwl cannot mint a new one from it.
+  case credentialExpired
 
   public var errorDescription: String? {
     switch self {
@@ -19,6 +22,8 @@ public enum OAuthError: LocalizedError, Equatable {
       return "Google OAuth refresh failed with HTTP \(status)."
     case .missingAccessToken:
       return "Google OAuth response did not contain an access token."
+    case .credentialExpired:
+      return "The session access token expired and cannot be refreshed."
     }
   }
 }
