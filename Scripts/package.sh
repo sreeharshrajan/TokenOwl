@@ -16,8 +16,8 @@ plutil -lint "$APP/Contents/Info.plist"
 
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")"
 ARCH="$(uname -m)"
-mkdir -p "$PROJECT_ROOT/DIST"
-PACKAGE="$PROJECT_ROOT/DIST/TokenOwl-$VERSION-$ARCH.pkg"
+mkdir -p "$PROJECT_ROOT/dist"
+PACKAGE="$PROJECT_ROOT/dist/TokenOwl-$VERSION-$ARCH.pkg"
 pkgbuild \
   --component "$APP" \
   --install-location /Applications \
@@ -25,7 +25,7 @@ pkgbuild \
   --version "$VERSION" \
   "$PACKAGE"
 
-cp LICENSE "$PROJECT_ROOT/DIST/LICENSE"
-cd "$PROJECT_ROOT/DIST"
+cp LICENSE "$PROJECT_ROOT/dist/LICENSE"
+cd "$PROJECT_ROOT/dist"
 shasum -a 256 "$(basename "$PACKAGE")" > "$(basename "$PACKAGE").sha256"
 echo "Created: $PACKAGE"

@@ -63,6 +63,13 @@ retain the last selected editor. Select the editor manually when using a termina
 
 ## Usage
 
+### Download the macOS installer
+
+[Download TokenOwl 0.3.1 for Apple Silicon](https://github.com/sreeharshrajan/TokenOwl/raw/refs/heads/master/dist/TokenOwl-0.3.1-arm64.pkg)
+(macOS 14 or later). Double-click the package to install, then launch TokenOwl
+from Applications. See [dist/README.md](dist/README.md) for installation and
+checksum verification instructions.
+
 ### Menu-bar app
 
 ```bash
@@ -88,9 +95,9 @@ The script compiles the release binary, packages `/Applications/TokenOwl.app` (m
 bash Scripts/package.sh
 ```
 
-Creates an unsigned, architecture-specific `.pkg` in `DIST/` that installs
+Creates an unsigned, architecture-specific `.pkg` in `dist/` that installs
 TokenOwl into `/Applications`. The app is ad-hoc signed and the MIT license
-is included. See [DIST/README.md](DIST/README.md) for installation requirements.
+is included. See [dist/README.md](dist/README.md) for installation requirements.
 
 ### CLI diagnostics
 
