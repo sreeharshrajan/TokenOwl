@@ -1,3 +1,5 @@
+import AppKit
+import Network
 import Foundation
 import Observation
 import TokenOwlCore
@@ -38,12 +40,9 @@ final class QuotaStore {
     /// a debug preview override is never written to defaults.
     var selectedEditor: AIEditor {
         didSet {
-            loadingState = selectedProviderSnapshot == nil ? .idle : .loaded
+            loadingState = providerErrors[selectedEditor].map(LoadingState.failed) ?? (selectedProviderSnapshot == nil ? .idle : .loaded)
             lastSuccessfulRefresh = selectedProviderSnapshot?.fetchedAt
-            Task {
-                while isRefreshing { try? await Task.sleep(for: .milliseconds(25)) }
-                await refresh()
-            }
+            Task { await refresh() }
             EditorSelection.save(selectedEditor)
             // Re-check installation so switching editors shows fresh facts.
             installations = discovery.discoverInstallations()
@@ -87,6 +86,41 @@ final class QuotaStore {
         }
     }
 
+    var codexHighlightModel = UserDefaults.standard.string(forKey: "tokenowl.highlight.codex.model") ?? "all" {
+        didSet { UserDefaults.standard.set(codexHighlightModel, forKey: "tokenowl.highlight.codex.model") }
+    }
+    var codexHighlightPeriod = HighlightFilter.PeriodSelection(
+        rawValue: UserDefaults.standard.string(forKey: "tokenowl.highlight.codex.period") ?? "5h"
+    ) ?? .fiveHours {
+        didSet { UserDefaults.standard.set(codexHighlightPeriod.rawValue, forKey: "tokenowl.highlight.codex.period") }
+    }
+
+    var codexHighlightModels: [String] {
+        Array(Set(providerSnapshots[.codex]?.metrics.map { $0.codexLimitGroup } ?? [])).sorted()
+    }
+
+    let notifications = NotificationManager()
+    var alertPreferences: QuotaAlertPreferences {
+        didSet {
+            if let data = try? JSONEncoder().encode(alertPreferences) {
+                UserDefaults.standard.set(data, forKey: "tokenowl.notifications")
+            }
+        }
+    }
+    private var codexBaselineEmail: String?
+    private var evaluator = QuotaAlertEvaluator()
+    private var providerErrors: [AIEditor: String] = [:]
+    private let networkMonitor = NWPathMonitor()
+    private var activationObserver: NSObjectProtocol?
+    var followsActiveApplication = UserDefaults.standard.object(forKey: "tokenowl.followActiveApplication") as? Bool ?? true {
+        didSet {
+            UserDefaults.standard.set(followsActiveApplication, forKey: "tokenowl.followActiveApplication")
+            if followsActiveApplication { selectActiveApplication(NSWorkspace.shared.frontmostApplication) }
+        }
+    }
+    private var wakeObserver: NSObjectProtocol?
+    private var networkAvailable = true
+
     private let service: AntigravityService
     private let discovery: EditorDiscoveryService
     let providerRegistry: QuotaProviderRegistry
@@ -94,6 +128,11 @@ final class QuotaStore {
     private var periodicTask: Task<Void, Never>?
 
     init(service: AntigravityService = AntigravityService()) {
+        var savedAlertPreferences = UserDefaults.standard.data(forKey: "tokenowl.notifications")
+            .flatMap { try? JSONDecoder().decode(QuotaAlertPreferences.self, from: $0) } ?? QuotaAlertPreferences()
+        // Migrate legacy multi-select settings to one supported warning threshold.
+        savedAlertPreferences.thresholds = [savedAlertPreferences.thresholds.intersection([50, 25, 10, 5]).min() ?? 10]
+        self.alertPreferences = savedAlertPreferences
         let discoveryService = EditorDiscoveryService()
         self.service = service
         self.discovery = discoveryService
@@ -189,7 +228,27 @@ final class QuotaStore {
     func start() {
         guard periodicTask == nil else { return }
 
-        Task { await refresh() }
+        activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+        ) { [weak self] notification in
+            let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            Task { @MainActor in self?.selectActiveApplication(app) }
+        }
+        selectActiveApplication(NSWorkspace.shared.frontmostApplication)
+        Task { await notifications.updatePermission(); await refresh() }
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in await self?.refresh() }
+        }
+        networkMonitor.pathUpdateHandler = { [weak self] path in
+            let available = path.status == .satisfied
+            Task { @MainActor in
+                guard let self else { return }
+                let reconnected = !self.networkAvailable && available
+                self.networkAvailable = available
+                if reconnected { await self.refresh() }
+            }
+        }
+        networkMonitor.start(queue: DispatchQueue(label: "tokenowl.network"))
 
         periodicTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -208,6 +267,24 @@ final class QuotaStore {
         }
     }
 
+    private func selectActiveApplication(_ application: NSRunningApplication?) {
+        guard followsActiveApplication,
+              let editor = AIEditor.foregroundEditor(bundleIdentifier: application?.bundleIdentifier),
+              editor != selectedEditor else { return }
+        selectedEditor = editor
+    }
+
+    func stop() {
+        periodicTask?.cancel()
+        periodicTask = nil
+        refreshTask?.cancel()
+        networkMonitor.cancel()
+        if let activationObserver { NSWorkspace.shared.notificationCenter.removeObserver(activationObserver) }
+        activationObserver = nil
+        if let wakeObserver { NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver) }
+        wakeObserver = nil
+    }
+
     // MARK: Refresh
 
     /// Manual or periodic refresh. Overlapping requests are coalesced, so a
@@ -222,7 +299,6 @@ final class QuotaStore {
         refreshTask = task
         await task.value
         refreshTask = nil
-        if selectedProviderSnapshot == nil && loadingState == .idle { await refresh() }
 
         // Rendered once `isRefreshing` has been reset, so the captured UI
         // matches the settled state.
@@ -230,10 +306,31 @@ final class QuotaStore {
     }
 
     private func performRefresh() async {
-        let editor = selectedEditor
+        guard networkAvailable else {
+            let message = "Network unavailable. Check your connection and try again."
+            providerErrors[selectedEditor] = message
+            loadingState = .failed(message)
+            return
+        }
+        await notifications.updatePermission()
+        let selectedAtStart = selectedEditor
+        let editors = [AIEditor.antigravity, .codex].filter { alertPreferences.monitors($0, selected: selectedAtStart) }
+        var refreshed: Set<AIEditor> = []
+        for editor in editors {
+            guard !Task.isCancelled else { return }
+            guard alertPreferences.monitors(editor, selected: selectedEditor) else { continue }
+            await performRefresh(editor: editor)
+            refreshed.insert(editor)
+        }
+        if !Task.isCancelled && !refreshed.contains(selectedEditor) {
+            await performRefresh(editor: selectedEditor)
+        }
+    }
+
+    private func performRefresh(editor: AIEditor) async {
         let hasCachedSnapshot = providerSnapshots[editor] != nil
         isRefreshing = true
-        if !hasCachedSnapshot {
+        if !hasCachedSnapshot && editor == selectedEditor {
             loadingState = .loading
             MenuPreviewRenderer.renderLoadingIfRequested(store: self)
             RedactedLogger.log("Refreshing quota; menu bar label is \(menuBarLabel)")
@@ -242,20 +339,33 @@ final class QuotaStore {
 
         do {
             let result: ProviderSnapshot
+            var verified = true
             if editor == .antigravity {
                 let snapshot = try await fetchSnapshot()
+                verified = !snapshot.accountIdentityUnavailable && snapshot.accountChange == nil
                 self.snapshot = snapshot
                 result = ProviderSnapshot(editor: editor, antigravitySnapshot: snapshot)
             } else {
                 guard let provider = providerRegistry.provider(for: editor) else { throw CodexError.rateLimitsUnavailable }
                 result = try await provider.fetchSnapshot()
+                verified = result.accountEmail != nil
+                if editor == .codex, let email = result.accountEmail {
+                    if let baseline = codexBaselineEmail, baseline != email { throw CodexError.accountChanged }
+                    codexBaselineEmail = email
+                }
             }
+            guard result.editor == editor else { throw CodexError.malformedResponse }
             providerSnapshots[editor] = result
+            providerErrors[editor] = nil
+            let alerts = evaluator.evaluate(result, preferences: alertPreferences, verified: verified,
+                                            permissionGranted: notifications.authorized)
+            await notifications.deliver(alerts)
             guard editor == selectedEditor else { return }
             lastSuccessfulRefresh = result.fetchedAt
             loadingState = .loaded
             RedactedLogger.log("Quota refreshed; menu bar label is \(menuBarLabel)")
         } catch {
+            providerErrors[editor] = ErrorPresentation.message(for: error)
             guard editor == selectedEditor else { return }
             // The last successful snapshot is intentionally preserved.
             loadingState = .failed(ErrorPresentation.message(for: error))
@@ -298,24 +408,40 @@ final class QuotaStore {
     }
 
     var headlinePercent: Int? {
-        guard selectedEditor == .antigravity else { return selectedProviderSnapshot?.headlineRemainingPercent }
+        guard selectedEditor == .antigravity else {
+            return selectedProviderSnapshot?.metric(for: codexHighlightPeriod, codexLimitGroup: codexHighlightModel == "all" ? nil : codexHighlightModel)?.remainingPercent
+        }
         return highlightBucket?.remainingPercent ?? snapshot?.quota.mostConstrainedPercent
     }
 
     var highlightLabel: String {
-        HighlightFilter.label(model: selectedModel, period: selectedPeriod)
+        if selectedEditor == .codex {
+            let model = codexHighlightModel == "all" ? "All models" : codexHighlightModel
+            return "\(model) • \(codexHighlightPeriod.title)"
+        }
+        return HighlightFilter.label(model: selectedModel, period: selectedPeriod)
+    }
+
+    private func menuBarPercent(for period: HighlightFilter.PeriodSelection) -> Int? {
+        if selectedEditor == .codex {
+            return selectedProviderSnapshot?.metric(for: period, codexLimitGroup: codexHighlightModel == "all" ? nil : codexHighlightModel)?.remainingPercent
+        }
+        return HighlightFilter.resolveBucket(in: snapshot?.quota, model: selectedModel,
+            period: period, requireMatchingPeriod: true)?.remainingPercent
     }
 
     var menuBarLabel: String {
-        if let headlinePercent {
-            return "🦉 \(headlinePercent)%"
+        let period = HighlightFilter.automaticPeriod(fiveHourRemainingPercent: menuBarPercent(for: .fiveHours))
+        let prefix = "🦉 \(selectedEditor.shortDisplayName) \(period == .fiveHours ? "5h" : "Weekly")"
+        if let percent = menuBarPercent(for: period) {
+            return "\(prefix) \(percent)%"
         }
 
         switch loadingState {
         case .loading, .idle:
-            return "🦉 …"
+            return "\(prefix) …"
         case .loaded, .failed:
-            return "🦉 —"
+            return "\(prefix) —"
         }
     }
 

@@ -56,3 +56,22 @@ struct HighlightFilterTests {
         #expect(bucket == nil)
     }
 }
+
+struct CodexHighlightSelectionTests {
+    @Test func selectsQuotaGroupAndPeriodWithoutFallback() {
+        let snapshot = ProviderSnapshot(
+            editor: .codex, fetchedAt: Date(), accountEmail: nil,
+            tierDisplayName: nil, credentialSourceDisplayName: nil,
+            metrics: [
+                ProviderMetric(id: "codex.primary", label: "5 hours", remainingPercent: 70, resetAt: nil),
+                ProviderMetric(id: "codex.secondary", label: "Weekly", remainingPercent: 40, resetAt: nil),
+                ProviderMetric(id: "special.primary", label: "5 hours", remainingPercent: 20, resetAt: nil)
+            ], headlineRemainingPercent: 20
+        )
+        #expect(snapshot.metric(for: .fiveHours)?.remainingPercent == 20)
+        #expect(snapshot.metric(for: .fiveHours, codexLimitGroup: "codex")?.remainingPercent == 70)
+        #expect(snapshot.metric(for: .weekly, codexLimitGroup: "codex")?.remainingPercent == 40)
+        #expect(snapshot.metric(for: .weekly, codexLimitGroup: "special") == nil)
+        #expect(snapshot.metric(for: .fiveHours, codexLimitGroup: "missing") == nil)
+    }
+}

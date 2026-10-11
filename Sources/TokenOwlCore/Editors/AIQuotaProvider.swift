@@ -94,7 +94,7 @@ extension ProviderSnapshot {
                 metrics.append(
                     ProviderMetric(
                         id: bucket.bucketId,
-                        label: "\(group.displayName) · \(bucket.displayName)",
+                        label: "\(group.displayName) · \(bucket.displayName)" + (bucket.window.map { " · \($0)" } ?? ""),
                         remainingPercent: bucket.remainingPercent,
                         resetAt: bucket.resetAt
                     )
@@ -149,5 +149,29 @@ public struct QuotaProviderRegistry: Sendable {
             hasQuotaAdapter: hasAdapter(for: editor),
             readsCredentials: editor.readsCredentials
         )
+    }
+}
+
+public extension ProviderSnapshot {
+    /// An unreported selected period stays unavailable rather than displaying
+    /// another period's limit.
+    func metric(for period: HighlightFilter.PeriodSelection, codexLimitGroup: String? = nil) -> ProviderMetric? {
+        metrics.filter { metric in
+            guard codexLimitGroup == nil || metric.codexLimitGroup == codexLimitGroup else { return false }
+            switch period {
+            case .fiveHours: return metric.label == "5 hours"
+            case .weekly: return metric.label == "Weekly"
+            }
+        }.min { $0.remainingPercent < $1.remainingPercent }
+    }
+}
+
+public extension ProviderMetric {
+    /// Codex identifies a shared quota group with primary and secondary windows.
+    var codexLimitGroup: String {
+        for suffix in [".primary", ".secondary"] where id.hasSuffix(suffix) {
+            return String(id.dropLast(suffix.count))
+        }
+        return id
     }
 }

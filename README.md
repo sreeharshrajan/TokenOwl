@@ -25,6 +25,32 @@ Antigravity AI quota and usage limits in real-time.
   TokenOwl prioritizes Keychain first; the IDE envelope is the fallback. Neither source impersonates the other's account.
 - **Graceful Lifecycle**: Quick one-click refresh, 5-minute background cadence, and a dedicated **Quit TokenOwl** option.
 
+### Google OAuth configuration
+
+Google token refresh reads the OAuth client configuration from the installed
+Antigravity IDE app. No environment setup is needed for the menu bar app.
+`GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` remain available as
+paired overrides for a matching custom OAuth client.
+
+Keychain reads support Touch ID through macOS Local Authentication when the
+Antigravity credential's access policy permits it. macOS may still require your
+login password for the IDE's existing Keychain item; TokenOwl does not change
+that item's access policy.
+
+### Active application menu bar
+
+TokenOwl follows the foreground Antigravity, Codex, VS Code, or VS Code Insiders app and displays
+its name and the 5-hour remaining quota in the menu bar, for example
+`🦉 Codex 5h 80%`. When the 5-hour quota reaches 0%, the menu bar switches to
+Weekly; it returns to 5h once quota is available again. An unreported period
+displays `—`. Settings controls the popover period; Antigravity also uses the
+selected model filter in the menu bar.
+
+Disable **Automatically switch between editors** in Settings to keep manual editor selection.
+VS Code and VS Code Insiders select Codex quota whenever the host app is in front;
+TokenOwl does not inspect which extension or panel is focused. Other foreground apps
+retain the last selected editor. Select the editor manually when using a terminal.
+
 ---
 
 ## Requirements
@@ -130,6 +156,7 @@ TokenOwlApp             menu-bar app (executable)
 ### Codex Integration Architecture
 
 TokenOwl communicates with OpenAI Codex via a local child process:
+
 - **Child process transport**: Spawns the official `codex app-server` binary via Swift native `Process` talking JSON-RPC 2.0 over stdio (one JSON object per line). No Node.js runtime or external server required.
 - **Protocol Handshake**: Sends `initialize` request, sends `initialized` notification, and requests `account/rateLimits/read`.
 - **Zero Token Access Invariant**: TokenOwl **never reads, parses, copies, or logs** `~/.codex/auth.json` or any OAuth/API token. It **never calls** `chatgpt.com/backend-api/*` directly. Codex owns authentication; TokenOwl purely renders presentation.
@@ -161,22 +188,3 @@ Developed with ❤️ by **Sreeharsh Rajan**
 ## License
 
 Licensed under the [MIT License](LICENSE).
-
-### Google OAuth configuration
-
-Google token refresh reads the matching OAuth client configuration from the
-installed Antigravity IDE. No client credentials are bundled in the source.
-Paired `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` environment
-variables can override discovery. Finder launches do not inherit terminal
-environment variables. Keep credentials out of Git.
-
-### Version 0.2.0
-
-Adds OAuth configuration discovery, bounded HTTP retries, safer credential
-file checks, and improved Codex process handling and account identification.
-Notification and preferences enhancements are deferred.
-
-### Version 0.3.0
-
-Updates the macOS release package and version metadata while retaining 0.2.0
-behavior. Notification and preferences enhancements remain deferred.

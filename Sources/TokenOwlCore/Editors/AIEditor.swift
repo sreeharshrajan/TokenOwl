@@ -218,3 +218,15 @@ public enum EditorSelection {
         defaults.set(editor.rawValue, forKey: userDefaultsKey)
     }
 }
+
+public extension AIEditor {
+    /// VS Code is treated as the Codex host. App activation identifies the
+    /// host application, not which extension or panel has focus inside it.
+    static func foregroundEditor(bundleIdentifier: String?) -> AIEditor? {
+        switch bundleIdentifier?.lowercased() {
+        case "com.google.antigravity-ide", "com.google.antigravity": return .antigravity
+        case "com.openai.codex", "com.microsoft.vscode", "com.microsoft.vscodeinsiders": return .codex
+        default: return nil
+        }
+    }
+}

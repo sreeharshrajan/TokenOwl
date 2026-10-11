@@ -33,7 +33,8 @@ public struct HighlightFilter: Equatable, Sendable {
     public static func resolveBucket(
         in summary: AntigravityQuotaSummary?,
         model: ModelSelection,
-        period: PeriodSelection
+        period: PeriodSelection,
+        requireMatchingPeriod: Bool = false
     ) -> QuotaBucket? {
         guard let summary else { return nil }
 
@@ -64,14 +65,14 @@ public struct HighlightFilter: Equatable, Sendable {
                 $0.displayName.localizedCaseInsensitiveContains("five") ||
                 $0.bucketId.localizedCaseInsensitiveContains("5h")
             }
-            candidateBuckets = filtered.isEmpty ? allCandidates : filtered
+            candidateBuckets = filtered.isEmpty && !requireMatchingPeriod ? allCandidates : filtered
         case .weekly:
             let filtered = allCandidates.filter {
                 ($0.window?.contains("7") == true) ||
                 $0.displayName.localizedCaseInsensitiveContains("week") ||
                 $0.bucketId.localizedCaseInsensitiveContains("weekly")
             }
-            candidateBuckets = filtered.isEmpty ? allCandidates : filtered
+            candidateBuckets = filtered.isEmpty && !requireMatchingPeriod ? allCandidates : filtered
         }
 
         // Step 3: Pick the lowest remaining percentage among matching candidates
@@ -80,7 +81,14 @@ public struct HighlightFilter: Equatable, Sendable {
                 return lhs.remainingPercent < rhs.remainingPercent
             }
             return lhs.bucketId < rhs.bucketId
-        } ?? summary.mostConstrainedBucket
+        } ?? (requireMatchingPeriod ? nil : summary.mostConstrainedBucket)
+    }
+
+    /// Prefer the short window until it is exhausted; absent data does not
+    /// imply exhaustion.
+    public static func automaticPeriod(fiveHourRemainingPercent: Int?) -> PeriodSelection {
+        if let fiveHourRemainingPercent, fiveHourRemainingPercent <= 0 { return .weekly }
+        return .fiveHours
     }
 
     /// Short label describing the active highlight criteria.

@@ -1,5 +1,8 @@
 # TokenOwl installer
 
+Latest release: **0.3.1** (build 4), dated **11 October 2026, 23:59 IST**
+(`2026-10-11T23:59:00+05:30`).
+
 Double-click the `.pkg` file to install TokenOwl into `/Applications`, then
 launch TokenOwl from Applications. The app appears in the menu bar.
 
@@ -18,7 +21,7 @@ Antigravity IDE. Paired `GOOGLE_OAUTH_CLIENT_ID` and
 Client credentials are not bundled in this installer.
 
 The MIT license is included beside the installer and inside the app bundle.
-Verify the download with `shasum -a 256 -c TokenOwl-0.3.0-arm64.pkg.sha256`
+Verify the download with `shasum -a 256 -c TokenOwl-0.3.1-arm64.pkg.sha256`
 (use the matching filename for your architecture).
 
 To rebuild from the repository root, run `bash Scripts/package.sh`.

@@ -52,9 +52,11 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.3.0</string>
+    <string>0.3.1</string>
     <key>CFBundleVersion</key>
-    <string>3</string>
+    <string>4</string>
+    <key>TokenOwlReleaseDate</key>
+    <string>2026-10-11T23:59:00+05:30</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>LSUIElement</key>

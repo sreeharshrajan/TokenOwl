@@ -12,6 +12,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         _ = NSApplication.shared.setActivationPolicy(.accessory)
     }
 
+    func applicationWillTerminate(_ notification: Notification) { store.stop() }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         _ = NSApplication.shared.setActivationPolicy(.accessory)
         store.start()

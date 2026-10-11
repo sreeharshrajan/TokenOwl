@@ -44,7 +44,9 @@ final class WindowManager {
         let hostingController = NSHostingController(rootView: preferencesView)
         let window = NSWindow(contentViewController: hostingController)
         window.title = "TokenOwl Settings"
-        window.styleMask = [.titled, .closable]
+        window.styleMask = [.titled, .closable, .resizable]
+        window.setContentSize(NSSize(width: 500, height: 640))
+        window.contentMinSize = NSSize(width: 460, height: 520)
         window.isReleasedWhenClosed = false
         window.level = NSWindow.Level(NSWindow.Level.popUpMenu.rawValue + 5)
         window.center()

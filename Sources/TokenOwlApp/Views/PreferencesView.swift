@@ -7,117 +7,120 @@ struct PreferencesView: View {
     @Environment(QuotaStore.self) private var store
     let onDismiss: () -> Void
 
+    private var hasAlertProvider: Bool {
+        store.alertPreferences.antigravityEnabled || store.alertPreferences.codexEnabled
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            // Highlight settings section
-            VStack(alignment: .leading, spacing: 10) {
-                Text("MENU BAR HIGHLIGHT")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .tracking(0.5)
-
-                // Full-width Model Dropdown
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Model")
+        @Bindable var store = store
+        VStack(spacing: 0) {
+            Form {
+                Section {
+                    Toggle("Automatically switch between editors", isOn: $store.followsActiveApplication)
+                    Text("Switch to Antigravity to show its quota, or to VS Code, VS Code Insiders, or the Codex app to show Codex quota. Other apps keep the current selection. Turn this off to choose the editor yourself.")
+                        .fixedSize(horizontal: false, vertical: true)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-
-                    Menu {
+                    Picker("Antigravity model", selection: $store.selectedModel) {
                         ForEach(HighlightFilter.ModelSelection.allCases, id: \.self) { model in
-                            Button {
-                                store.selectedModel = model
-                            } label: {
-                                if store.selectedModel == model {
-                                    Label(model.title, systemImage: "checkmark")
-                                } else {
-                                    Text(model.title)
-                                }
-                            }
+                            Text(model.title).tag(model)
                         }
-                    } label: {
-                        HStack {
-                            Text(store.selectedModel.title)
-                                .font(.subheadline)
-                                .foregroundStyle(.primary)
-
-                            Spacer()
-
-                            Image(systemName: "chevron.up.chevron.down")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color.white.opacity(0.08))
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6)
-                                .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
-                        )
                     }
-                    .menuStyle(.borderlessButton)
-                    .frame(maxWidth: .infinity)
-                }
-
-                // Full-width Time Period Dropdown
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Time Period")
+                    Picker("Antigravity time period", selection: $store.selectedPeriod) {
+                        ForEach(HighlightFilter.PeriodSelection.allCases, id: \.self) { period in
+                            Text(period.title).tag(period)
+                        }
+                    }
+                    Picker("Codex model / quota group", selection: $store.codexHighlightModel) {
+                        Text("All models").tag("all")
+                        ForEach(store.codexHighlightModels, id: \.self) { model in
+                            Text(model == "codex" ? "Codex (shared quota)" : model).tag(model)
+                        }
+                        if store.codexHighlightModel != "all", !store.codexHighlightModels.contains(store.codexHighlightModel) {
+                            Text("\(store.codexHighlightModel) (not reported)").tag(store.codexHighlightModel)
+                        }
+                    }
+                    Picker("Codex time period", selection: $store.codexHighlightPeriod) {
+                        ForEach(HighlightFilter.PeriodSelection.allCases, id: \.self) { period in
+                            Text(period.title).tag(period)
+                        }
+                    }
+                    Text("Each editor keeps its own highlight settings. Codex model options come from its reported quota groups; some models share a single quota.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-
-                    Menu {
-                        ForEach(HighlightFilter.PeriodSelection.allCases, id: \.self) { period in
-                            Button {
-                                store.selectedPeriod = period
-                            } label: {
-                                if store.selectedPeriod == period {
-                                    Label(period.title, systemImage: "checkmark")
-                                } else {
-                                    Text(period.title)
-                                }
-                            }
-                        }
-                    } label: {
-                        HStack {
-                            Text(store.selectedPeriod.title)
-                                .font(.subheadline)
-                                .foregroundStyle(.primary)
-
-                            Spacer()
-
-                            Image(systemName: "chevron.up.chevron.down")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color.white.opacity(0.08))
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6)
-                                .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
-                        )
-                    }
-                    .menuStyle(.borderlessButton)
-                    .frame(maxWidth: .infinity)
+                    Text("Controls the popover highlight. The menu bar shows 5h until exhausted, then Weekly.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } header: {
+                    Label("Menu bar highlight", systemImage: "menubar.rectangle")
                 }
 
-                Text("Controls the percentage shown in the menu bar and the popover hero number.")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+                Section {
+                    Toggle("Enable quota notifications", isOn: $store.alertPreferences.enabled)
+                    VStack(alignment: .leading, spacing: 10) {
+                        Toggle("Antigravity alerts", isOn: $store.alertPreferences.antigravityEnabled)
+                        Toggle("Codex alerts", isOn: $store.alertPreferences.codexEnabled)
+                        Picker("Warn when remaining", selection: Binding(
+                            get: { store.alertPreferences.thresholds.intersection([50, 25, 10, 5]).min() ?? 10 },
+                            set: { store.alertPreferences.thresholds = [$0] }
+                        )) {
+                            ForEach([50, 25, 10, 5], id: \.self) { threshold in
+                                Text("\(threshold)%").tag(threshold)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .disabled(!hasAlertProvider)
+                        Text("Alerts fire when quota crosses this threshold, once per reset period.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .disabled(!store.alertPreferences.enabled)
+                    HStack {
+                        Text(store.notifications.status)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        if store.notifications.canRequest {
+                            Button("Allow Notifications") {
+                                Task { await store.notifications.requestPermission() }
+                            }
+                            .disabled(!store.alertPreferences.enabled)
+                        }
+                    }
+                } header: {
+                    Label("Notifications", systemImage: "bell")
+                }
 
-            Divider()
+                Section {
+                    Toggle("Monitor Antigravity", isOn: $store.alertPreferences.backgroundAntigravity)
+                        .disabled(!store.alertPreferences.allows(.antigravity))
+                    Toggle("Monitor Codex", isOn: $store.alertPreferences.backgroundCodex)
+                        .disabled(!store.alertPreferences.allows(.codex))
+                    Text("Refreshes an unselected editor every five minutes. Requires quota notifications and that editor’s alerts to be enabled.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } header: {
+                    Label("Background monitoring", systemImage: "arrow.clockwise")
+                }
+
+                Section {
+                    Toggle("Launch at login", isOn: Binding(
+                        get: { store.notifications.loginEnabled },
+                        set: { store.notifications.setLoginEnabled($0) }
+                    ))
+                    if let message = store.notifications.loginError {
+                        Text(message).font(.caption).foregroundStyle(.secondary)
+                    } else if !store.notifications.loginStatus.isEmpty {
+                        Text(store.notifications.loginStatus).font(.caption).foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Label("General", systemImage: "gearshape")
+                }
 
             // Account & info section
-            VStack(alignment: .leading, spacing: 6) {
-                Text("ACCOUNT & CREDENTIALS")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .tracking(0.5)
-
-                if let email = store.snapshot?.account.email {
+            Section("Account & credentials") {
+                if let email = store.selectedProviderSnapshot?.accountEmail {
                     HStack {
                         Text("Account")
                             .font(.caption)
@@ -130,19 +133,19 @@ struct PreferencesView: View {
                     }
                 }
 
-                if let source = store.snapshot?.credentialSource {
+                if let source = store.selectedProviderSnapshot?.credentialSourceDisplayName {
                     HStack {
                         Text("Source")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Spacer()
-                        Text(source.displayName)
+                        Text(source)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
 
-                if let tier = store.snapshot?.account.tierDisplayName, !tier.isEmpty {
+                if let tier = store.selectedProviderSnapshot?.tierDisplayName, !tier.isEmpty {
                     HStack {
                         Text("Application")
                             .font(.caption)
@@ -155,8 +158,12 @@ struct PreferencesView: View {
                 }
             }
 
-            Divider()
+            }
+            .formStyle(.grouped)
+            .toggleStyle(.switch)
+            .controlSize(.small)
 
+            Divider()
             // Actions
             HStack {
                 Button("Quit TokenOwl") {
@@ -172,8 +179,10 @@ struct PreferencesView: View {
                 .controlSize(.small)
                 .keyboardShortcut(.defaultAction)
             }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
         }
-        .padding(16)
-        .frame(width: 300)
+        .frame(minWidth: 460, idealWidth: 500, minHeight: 520, idealHeight: 640)
+        .task { await store.notifications.updatePermission() }
     }
 }
