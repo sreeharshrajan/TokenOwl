@@ -56,6 +56,16 @@ The script compiles the release binary, packages `/Applications/TokenOwl.app` (m
 - **Relaunch / Restart**: `killall TokenOwlApp && open /Applications/TokenOwl.app`
 - **Uninstall**: `rm -rf /Applications/TokenOwl.app`
 
+### Build a macOS installer
+
+```bash
+bash Scripts/package.sh
+```
+
+Creates an unsigned, architecture-specific `.pkg` in `DIST/` that installs
+TokenOwl into `/Applications`. The app is ad-hoc signed and the MIT license
+is included. See [DIST/README.md](DIST/README.md) for installation requirements.
+
 ### CLI diagnostics
 
 ```bash
@@ -150,7 +160,7 @@ Developed with ❤️ by **Sreeharsh Rajan**
 
 ## License
 
-MIT
+Licensed under the [MIT License](LICENSE).
 
 ### Google OAuth configuration
 
