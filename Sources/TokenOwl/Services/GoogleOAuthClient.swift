@@ -1,6 +1,7 @@
 import Foundation
 
 enum OAuthError: LocalizedError {
+  case missingClientConfiguration
   case missingRefreshToken
   case invalidResponse
   case httpError(Int)
@@ -8,6 +9,8 @@ enum OAuthError: LocalizedError {
 
   var errorDescription: String? {
     switch self {
+    case .missingClientConfiguration:
+      return "Set GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET before refreshing Google authentication."
     case .missingRefreshToken:
       return "Refresh token is unavailable."
     case .invalidResponse:
@@ -22,14 +25,19 @@ enum OAuthError: LocalizedError {
 
 struct GoogleOAuthClient {
 
-  // Public installed-app OAuth credentials used by Antigravity.
-  // These are read from the environment or configured at runtime so push protection is satisfied.
+  // OAuth client credentials must be provided through the environment.
   private var clientID: String {
-    ProcessInfo.processInfo.environment["GOOGLE_OAUTH_CLIENT_ID"] ?? ""
+    if let env = ProcessInfo.processInfo.environment["GOOGLE_OAUTH_CLIENT_ID"], !env.isEmpty {
+      return env
+    }
+    return ""
   }
 
   private var clientSecret: String {
-    ProcessInfo.processInfo.environment["GOOGLE_OAUTH_CLIENT_SECRET"] ?? ""
+    if let env = ProcessInfo.processInfo.environment["GOOGLE_OAUTH_CLIENT_SECRET"], !env.isEmpty {
+      return env
+    }
+    return ""
   }
 
   private let tokenURL =
@@ -50,6 +58,10 @@ struct GoogleOAuthClient {
   func refreshAccessToken(
     refreshToken: String
   ) async throws -> RefreshResponse {
+
+    guard !clientID.isEmpty, !clientSecret.isEmpty else {
+      throw OAuthError.missingClientConfiguration
+    }
 
     var request = URLRequest(url: tokenURL)
     request.httpMethod = "POST"

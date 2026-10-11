@@ -9,31 +9,14 @@ struct TokenOwl {
     print("────────────────────────────")
 
     do {
-      // MARK: Keychain
+      // MARK: Credential Resolution
 
-      print("Checking Antigravity credentials...")
+      print("Resolving Antigravity credential...")
 
-      let rawCredential =
-        try AntigravityCredentialReader()
-        .readRawCredential()
+      let provider: AntigravityCredentialProvider = KeychainCredentialProvider()
+      let resolved = try await provider.resolveCredential()
 
-      print("✓ Antigravity credential found")
-
-      // MARK: Decode
-
-      let credential =
-        try AntigravityCredentialDecoder()
-        .decode(rawCredential)
-
-      print("✓ Credential decoded")
-
-      guard
-        let refreshToken = credential.token.refreshToken,
-        !refreshToken.isEmpty
-      else {
-        throw OAuthError.missingRefreshToken
-      }
-
+      print("✓ Credential source: \(resolved.source.rawValue)")
       print("✓ Refresh token available")
 
       // MARK: OAuth
@@ -45,7 +28,7 @@ struct TokenOwl {
 
       let refreshed =
         try await oauth.refreshAccessToken(
-          refreshToken: refreshToken
+          refreshToken: resolved.refreshToken
         )
 
       print("✓ Google OAuth refresh successful")
@@ -75,6 +58,7 @@ struct TokenOwl {
       print("")
       print("🦉 TokenOwl")
       print("────────────────────────────")
+      print("Source:  \(resolved.source.rawValue)")
       if let email = snapshot.account.email {
         print("Account: \(email)")
       }
@@ -82,6 +66,12 @@ struct TokenOwl {
         print("Plan:    \(tierName)")
       }
       print("────────────────────────────")
+      if snapshot.account.tierID == "free-tier" {
+        print("💡 Note: Displaying quota for '\(snapshot.account.email ?? "CLI account")'.")
+        print("   If your Antigravity IDE is logged into a Google AI Pro account,")
+        print("   sign into that account with the Antigravity app to update Keychain.")
+        print("────────────────────────────")
+      }
 
       var lowestRemaining = 100
 
