@@ -90,7 +90,7 @@ extension ProviderSnapshot {
     public init(editor: AIEditor, antigravitySnapshot: AntigravitySnapshot) {
         var metrics: [ProviderMetric] = []
         for group in antigravitySnapshot.quota.groups {
-            for bucket in group.buckets {
+            for bucket in group.buckets where !bucket.disabled {
                 metrics.append(
                     ProviderMetric(
                         id: bucket.bucketId,

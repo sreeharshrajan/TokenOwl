@@ -48,9 +48,42 @@ public struct AntigravityQuotaClient: AntigravityQuotaFetching {
     public init() {}
 
 
-    private let quotaURL = URL(
-        string: "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
-    )!
+    /// Match the IDE: consumer tiers use the daily service, GCP terms use
+    /// the standard service. Both may return 200 with different quota values.
+    static func quotaURL(accountDetails: [String: Any]) -> URL {
+        let tier = accountDetails["paidTier"] as? [String: Any]
+        let usesGCPTerms = tier?["usesGcpTos"] as? Bool ?? false
+        let host = usesGCPTerms ? "cloudcode-pa.googleapis.com" : "daily-cloudcode-pa.googleapis.com"
+        return URL(string: "https://\(host)/v1internal:retrieveUserQuotaSummary")!
+    }
+
+    private func quotaURL(accessToken: String) async throws -> URL {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 15
+        configuration.timeoutIntervalForResource = 20
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        let details = try await Self.accountDetails(accessToken: accessToken, session: session)
+        return Self.quotaURL(accountDetails: details)
+    }
+
+    /// The service gates available model groups on the client version.
+    static var userAgent: String {
+        var version = "2.5.5"
+        if case .installed(let path) = EditorDiscoveryService().discoverInstallation(of: .antigravity),
+           let data = FileManager.default.contents(atPath: path + "/Contents/Resources/app/product.json"),
+           let product = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let installedVersion = product["ideVersion"] as? String,
+           !installedVersion.isEmpty {
+            version = installedVersion
+        }
+        #if arch(arm64)
+        let architecture = "arm64"
+        #else
+        let architecture = "x64"
+        #endif
+        return "antigravity/\(version) darwin/\(architecture)"
+    }
 
     private let maximumResponseSize = 4 * 1024 * 1024
 
@@ -58,7 +91,7 @@ public struct AntigravityQuotaClient: AntigravityQuotaFetching {
         accessToken: String
     ) async throws -> QuotaInspectionResult {
 
-        var request = URLRequest(url: quotaURL)
+        var request = URLRequest(url: try await quotaURL(accessToken: accessToken))
         request.httpMethod = "POST"
 
         request.setValue(
@@ -72,7 +105,7 @@ public struct AntigravityQuotaClient: AntigravityQuotaFetching {
         )
 
         request.setValue(
-            "antigravity/1.11.3 macOS/arm64",
+            Self.userAgent,
             forHTTPHeaderField: "User-Agent"
         )
 
@@ -173,7 +206,7 @@ public struct AntigravityQuotaClient: AntigravityQuotaFetching {
         accessToken: String
     ) async throws -> AntigravityQuotaSummary {
 
-        var request = URLRequest(url: quotaURL)
+        var request = URLRequest(url: try await quotaURL(accessToken: accessToken))
         request.httpMethod = "POST"
 
         request.setValue(
@@ -187,7 +220,7 @@ public struct AntigravityQuotaClient: AntigravityQuotaFetching {
         )
 
         request.setValue(
-            "antigravity/1.11.3 macOS/arm64",
+            Self.userAgent,
             forHTTPHeaderField: "User-Agent"
         )
 
@@ -309,6 +342,18 @@ public struct AntigravityQuotaClient: AntigravityQuotaFetching {
         accessToken: String,
         session: URLSession
     ) async throws -> (id: String?, name: String?, upgrade: String?) {
+        let json = try await accountDetails(accessToken: accessToken, session: session)
+        let tier = (json["paidTier"] as? [String: Any])
+            ?? (json["currentTier"] as? [String: Any])
+            ?? (json["userTier"] as? [String: Any])
+        return (tier?["id"] as? String, tier?["name"] as? String,
+                json["upgradeSubscriptionText"] as? String)
+    }
+
+    private static func accountDetails(
+        accessToken: String,
+        session: URLSession
+    ) async throws -> [String: Any] {
         let url = URL(
             string: "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist"
         )!
@@ -317,7 +362,7 @@ public struct AntigravityQuotaClient: AntigravityQuotaFetching {
         request.httpMethod = "POST"
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("antigravity/1.11.3 macOS/arm64", forHTTPHeaderField: "User-Agent")
+        request.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
         request.httpBody = Data("{}".utf8)
 
         let (data, response) = try await HTTPRetry.data(for: request, session: session)
@@ -336,19 +381,7 @@ public struct AntigravityQuotaClient: AntigravityQuotaFetching {
             throw QuotaClientError.invalidJSON
         }
 
-        var id: String?
-        var name: String?
-
-        if let currentTier = json["currentTier"] as? [String: Any] {
-            id = currentTier["id"] as? String
-            name = currentTier["name"] as? String
-        }
-        if let userTier = json["userTier"] as? [String: Any] {
-            if id == nil { id = userTier["id"] as? String }
-            if name == nil { name = userTier["name"] as? String }
-        }
-
-        return (id, name, json["upgradeSubscriptionText"] as? String)
+        return json
     }
 
     private static func emailAddress(

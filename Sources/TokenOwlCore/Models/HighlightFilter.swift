@@ -55,7 +55,7 @@ public struct HighlightFilter: Equatable, Sendable {
         }
 
         // Step 2: Filter candidate buckets by period selection
-        let allCandidates = candidateGroups.flatMap(\.buckets)
+        let allCandidates = candidateGroups.flatMap(\.buckets).filter { !$0.disabled }
         let candidateBuckets: [QuotaBucket]
         switch period {
         case .fiveHours:

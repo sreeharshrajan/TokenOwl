@@ -64,6 +64,11 @@ struct TokenOwl {
 
                 for bucket in group.buckets {
                     print("  \(bucket.displayName)")
+                    if bucket.disabled {
+                        print("    Not applicable")
+                        if let description = bucket.description { print("    \(description)") }
+                        continue
+                    }
                     print("    \(bucket.remainingPercent)% remaining")
 
                     if let window = bucket.window {

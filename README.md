@@ -20,10 +20,20 @@ Antigravity AI quota and usage limits in real-time.
 - **Native AI Editor Selector**: Switch between installed AI editors (Antigravity IDE, Codex) from a native picker in the popover. Antigravity reads Google account quotas. Codex shows Codex quota windows through `codex app-server` (install Codex CLI and run `codex login`). The Keychain and IDE credential providers remain internal authentication mechanisms under Antigravity — they are not tied to the editor dropdown.
 - **Cached OAuth Tokens**: Reuses valid access tokens and automatically refreshes them with Google OAuth prior to expiration. Tokens are stored in memory only.
 - **Dual Credential Sources**: Resolves credentials from two independent sources:
-  1. **macOS Keychain** — the IDE's current active session (account A). Quota matches the IDE's usage panel exactly.
-  2. **IDE state database envelope** — can retain a previously signed-in account (account B) whose refresh token still works. Tried only after Keychain.
+  1. **macOS Keychain** — the Antigravity CLI credential, tried first.
+  2. **IDE state database envelope** — the IDE's persisted session, tried after Keychain if authentication fails. It can retain a previously signed-in account.
   TokenOwl prioritizes Keychain first; the IDE envelope is the fallback. Neither source impersonates the other's account.
 - **Graceful Lifecycle**: Quick one-click refresh, 5-minute background cadence, and a dedicated **Quit TokenOwl** option.
+
+### Latest fixes — October 18, 2026
+
+- **Accurate Antigravity quotas and reset times**: Matches the IDE's account-based routing. Consumer accounts use `daily-cloudcode-pa.googleapis.com`; tiers with `paidTier.usesGcpTos` enabled use `cloudcode-pa.googleapis.com`. The previous fixed endpoint could incorrectly report Gemini at 100% with moving reset times.
+- **Current IDE version detection**: Reads `ideVersion` from the installed Antigravity IDE's `product.json` for the request User-Agent. The old hardcoded version could hide Gemini quota groups on the consumer endpoint.
+- **Disabled windows show N/A**: When the weekly quota is exhausted and Google disables the five-hour window, the popover shows **N/A** with Google's explanation, and the CLI prints **Not applicable**. Disabled windows are excluded from highlights, quota metrics, and alerts.
+- **Correct plan label**: Prefers the paid tier returned by Google, so subscriptions such as **Google AI Pro** display correctly.
+
+The downloadable 0.3.1 installer below includes these fixes. Install it and
+restart TokenOwl, or rebuild from source with `./Scripts/install.sh`.
 
 ### Google OAuth configuration
 

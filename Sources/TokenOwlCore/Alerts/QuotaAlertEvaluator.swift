@@ -4,7 +4,7 @@ public struct QuotaAlertPreferences: Codable, Equatable, Sendable {
     public var enabled = true
     public var antigravityEnabled = true
     public var codexEnabled = true
-    public var backgroundAntigravity = false
+    public var backgroundAntigravity = true
     public var backgroundCodex = false
     public var thresholds: Set<Int> = [10]
     public init() {}

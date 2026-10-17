@@ -16,18 +16,24 @@ struct QuotaBucketView: View {
 
                 Spacer(minLength: 8)
 
-                Text("\(bucket.remainingPercent)%")
+                Text(bucket.disabled ? "N/A" : "\(bucket.remainingPercent)%")
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(percentageColor)
             }
 
             // Gradient progress bar
-            QuotaBar(fraction: progress, severity: bucket.severity)
-                .padding(.vertical, 1)
+            if !bucket.disabled {
+                QuotaBar(fraction: progress, severity: bucket.severity)
+                    .padding(.vertical, 1)
+            }
 
             // Reset time with clock icon
-            if !resetText.isEmpty {
+            if bucket.disabled {
+                Text(bucket.description ?? "This limit does not currently apply.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            } else if !resetText.isEmpty {
                 HStack(spacing: 5) {
                     Image(systemName: "clock")
                         .font(.system(size: 10))
@@ -64,6 +70,7 @@ struct QuotaBucketView: View {
     /// Matches the screenshot colors:
     /// Weekly limit displays in bright green; Five hour limit displays in vibrant yellow/gold.
     private var percentageColor: Color {
+        if bucket.disabled { return .secondary }
         switch bucket.severity {
         case .normal:
             let lower = displayName.lowercased()
@@ -79,6 +86,9 @@ struct QuotaBucketView: View {
     }
 
     private var accessibilityLabel: String {
+        if bucket.disabled {
+            return "\(displayName): not applicable. \(bucket.description ?? "")"
+        }
         var label = "\(displayName): \(bucket.remainingPercent) percent remaining"
         if !resetText.isEmpty {
             label += ", \(resetText)"

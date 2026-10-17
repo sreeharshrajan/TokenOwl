@@ -238,3 +238,20 @@ token keeps working and nothing clears it. Priority is therefore
 premise ("the envelope reflects the IDE's signed-in account") is retracted.
 The envelope remains useful as a fallback and will automatically become
 correct if the IDE ever writes the active account into it.
+
+### 7.6 Current IDE routing and credential correction (2026-10-18)
+
+The 2.5.5 IDE routes consumer accounts to `daily-cloudcode-pa.googleapis.com`
+after `loadCodeAssist`; only `paidTier.usesGcpTos == true` keeps the standard
+`cloudcode-pa.googleapis.com` endpoint. The standard endpoint returned Gemini
+100% with moving reset times, while the consumer endpoint with the IDE session
+returned the actual used quota and fixed reset times shown in Settings.
+
+The old hardcoded `antigravity/1.11.3` User-Agent also omitted Gemini on the
+consumer service. Use the installed IDE's `product.json` `ideVersion` instead.
+Credential ordering is unchanged: both credential sources returned the same
+quota when tested with the current IDE version header and consumer endpoint.
+
+Quota responses also contain `disabled: true` for a five-hour window when the
+weekly limit is exhausted. Preserve its description for display, show N/A, and
+exclude that window from highlights, neutral provider metrics, and alerts.

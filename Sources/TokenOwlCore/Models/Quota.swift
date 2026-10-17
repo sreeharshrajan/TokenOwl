@@ -24,6 +24,7 @@ struct QuotaBucketPayload: Decodable, Sendable {
     let remainingFraction: Double
     let resetTime: String?
     let window: String?
+    let disabled: Bool?
 }
 
 // MARK: - Domain
@@ -74,6 +75,8 @@ public struct QuotaBucket: Sendable {
     /// something we could not parse.
     public let resetAt: Date?
     public let window: String?
+    /// Disabled windows do not constrain usage and must not advertise capacity.
+    public let disabled: Bool
 
     public var remainingPercent: Int {
         Int((remainingFraction * 100).rounded())
@@ -90,7 +93,8 @@ public struct QuotaBucket: Sendable {
         description: String?,
         remainingFraction: Double,
         resetAt: Date?,
-        window: String?
+        window: String?,
+        disabled: Bool = false
     ) {
         self.bucketId = bucketId
         self.displayName = displayName
@@ -98,6 +102,7 @@ public struct QuotaBucket: Sendable {
         self.remainingFraction = remainingFraction
         self.resetAt = resetAt
         self.window = window
+        self.disabled = disabled
     }
 
     init(payload: QuotaBucketPayload) {
@@ -107,7 +112,8 @@ public struct QuotaBucket: Sendable {
             description: payload.description,
             remainingFraction: payload.remainingFraction,
             resetAt: payload.resetTime.flatMap(DateParser.parse),
-            window: payload.window
+            window: payload.window,
+            disabled: payload.disabled ?? false
         )
     }
 }
@@ -115,11 +121,9 @@ public struct QuotaBucket: Sendable {
 // MARK: - Domain helpers
 
 extension AntigravityQuotaSummary {
-    /// Every bucket the API reported for the current windows. The API only
-    /// returns windows that are currently in effect, so all reported buckets
-    /// are active quota windows.
+    /// Enabled buckets that currently constrain usage.
     public var allBuckets: [QuotaBucket] {
-        groups.flatMap(\.buckets)
+        groups.flatMap(\.buckets).filter { !$0.disabled }
     }
 
     /// The single tightest bucket. Buckets are never averaged or combined:

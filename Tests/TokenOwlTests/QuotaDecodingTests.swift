@@ -4,6 +4,38 @@ import Testing
 
 struct QuotaDecodingTests {
 
+    @Test func routesConsumerAndGCPTiersLikeIDE() {
+        #expect(AntigravityQuotaClient.quotaURL(accountDetails: [
+            "paidTier": ["usesGcpTos": false]
+        ]).host == "daily-cloudcode-pa.googleapis.com")
+        #expect(AntigravityQuotaClient.quotaURL(accountDetails: [
+            "paidTier": ["usesGcpTos": true]
+        ]).host == "cloudcode-pa.googleapis.com")
+        // The IDE treats an absent paid tier/flag as consumer terms after loadCodeAssist.
+        #expect(AntigravityQuotaClient.quotaURL(accountDetails: [:]).host == "daily-cloudcode-pa.googleapis.com")
+    }
+
+    @Test func disabledWindowIsPreservedButExcludedFromMetricsAndHighlights() throws {
+        let summary = try AntigravityQuotaClient.summary(from: Data(#"""
+        {"groups":[{"displayName":"Claude and GPT models","buckets":[
+          {"bucketId":"3p-weekly","displayName":"Weekly Limit Remaining","window":"weekly","remainingFraction":0},
+          {"bucketId":"3p-5h","displayName":"Five Hour Limit Remaining","window":"5h","remainingFraction":1,"disabled":true,"description":"The five-hour limit does not currently apply."}
+        ]}]}
+        """#.utf8))
+        let disabled = summary.groups[0].buckets[1]
+        #expect(disabled.disabled)
+        #expect(disabled.description == "The five-hour limit does not currently apply.")
+        #expect(summary.allBuckets.map(\.bucketId) == ["3p-weekly"])
+        #expect(HighlightFilter.resolveBucket(in: summary, model: .claudeAndGPT,
+            period: .fiveHours, requireMatchingPeriod: true) == nil)
+        #expect(HighlightFilter.resolveBucket(in: summary, model: .claudeAndGPT,
+            period: .fiveHours)?.bucketId == "3p-weekly")
+    }
+
+    @Test func existingResponsesDefaultToEnabled() {
+        #expect(Fixtures.quotaSummary.allBuckets.allSatisfy { !$0.disabled })
+    }
+
     @Test func decodesTwoGroups() throws {
         let summary = Fixtures.quotaSummary
 
@@ -48,7 +80,8 @@ struct QuotaDecodingTests {
             description: nil,
             remainingFraction: 0.5,
             resetTime: "not-a-date",
-            window: nil
+            window: nil,
+            disabled: nil
         )
 
         #expect(QuotaBucket(payload: payload).resetAt == nil)
@@ -61,7 +94,8 @@ struct QuotaDecodingTests {
             description: nil,
             remainingFraction: 0.5,
             resetTime: nil,
-            window: nil
+            window: nil,
+            disabled: nil
         )
 
         #expect(QuotaBucket(payload: payload).resetAt == nil)
